@@ -22,7 +22,8 @@ setup(
     name='gin-config',
     version='0.1',
     include_package_data=True,
-    packages=find_packages(exclude=['contrib', 'docs', 'tests']),  # Required
+    packages=find_packages(exclude=['contrib', 'tests']),  # Required
+    package_data={'testdata': ['testdata/*.gin']},
     extras_require={  # Optional
         'tf': ['tensorflow'],
         'test': ['coverage'],
