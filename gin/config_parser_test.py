@@ -1,0 +1,398 @@
+# coding=utf-8
+# Copyright 2018 The Gin-Config Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import ast
+import collections
+import pprint
+import random
+
+from absl.testing import absltest
+
+import six
+
+from gin import config_parser
+
+
+def _generate_nested_value(max_depth=4, max_container_size=5):
+  def generate_int():
+    return random.randint(-10000, 10000)
+
+  def generate_float():
+    return random.random() * 10000 - 5000
+
+  def generate_bool():
+    return random.random() > 0.5
+
+  def generate_none():
+    return None
+
+  def generate_string():
+    length = random.randint(0, 10)
+    quote = random.choice(['"', "'"])
+    alphabet = 'abcdefghijklmnopqrstuvwxyz\\\'\" '
+    contents = [random.choice(alphabet) for _ in range(length)]
+    return quote + ''.join(contents) + quote
+
+  def generate_list():
+    length = random.randint(0, max_container_size + 1)
+    return [_generate_nested_value(max_depth - 1) for _ in range(length)]
+
+  def generate_tuple():
+    return tuple(generate_list())
+
+  def generate_dict():
+    length = random.randint(0, max_container_size + 1)
+    key_generators = [generate_int, generate_float, generate_string]
+    return {
+        random.choice(key_generators)(): _generate_nested_value(max_depth - 1)
+        for _ in range(length)
+    }
+
+  generators = [
+      generate_int, generate_float, generate_bool, generate_none,
+      generate_string
+  ]
+  if max_depth > 0:
+    generators.extend([generate_list, generate_tuple, generate_dict])
+
+  return random.choice(generators)()
+
+
+class _TestConfigurableReference(
+    collections.namedtuple('_TestConfigurableReference', ['name', 'evaluate'])):
+  pass
+
+
+class _TestAlias(collections.namedtuple('_TestAlias', ['name'])):
+  pass
+
+
+class _TestParserDelegate(config_parser.ParserDelegate):
+
+  def configurable_reference(self, scoped_name, evaluate):
+    return _TestConfigurableReference(scoped_name, evaluate)
+
+  def alias(self, scoped_name):
+    return _TestAlias(scoped_name)
+
+
+class ConfigParserTest(absltest.TestCase):
+
+  def _parse_value(self, literal):
+    parser = config_parser.ConfigParser(literal, _TestParserDelegate())
+    return parser.parse_value()
+
+  def _validate_against_literal_eval(self, literal):
+    parsed_value = self._parse_value(literal)
+    self.assertEqual(parsed_value, ast.literal_eval(literal))
+
+  def _assert_raises_syntax_error(self, literal):
+    with self.assertRaises(SyntaxError):
+      self._parse_value(literal)
+
+  def _parse_config(self, config_str, only_bindings=True):
+    parser = config_parser.ConfigParser(config_str, _TestParserDelegate())
+
+    config = {}
+    imports = []
+    includes = []
+    for statement in parser:
+      if isinstance(statement, config_parser.BindingStatement):
+        scope, selector, arg_name, value = statement
+        config.setdefault((scope, selector), {})[arg_name] = value
+      elif isinstance(statement, config_parser.ImportStatement):
+        imports.append(statement.module)
+      elif isinstance(statement, config_parser.IncludeStatement):
+        includes.append(statement.filename)
+
+    if only_bindings:
+      return config
+    return config, imports, includes
+
+  def testParseRandomLiterals(self):
+    # Try a bunch of random nested Python structures and make sure we can parse
+    # them back to the correct value.
+    random.seed(42)
+    for _ in range(1000):
+      value = _generate_nested_value()
+      literal = pprint.pformat(value)
+      parsed_value = self._parse_value(literal)
+      self.assertEqual(value, parsed_value)
+
+  def testInvalidBasicType(self):
+    with self.assertRaises(SyntaxError) as assert_raises:
+      self._parse_config("""
+        scope/some_fn.arg1 = None
+        scope/some_fn.arg2 = Garbage  # <-- Not a valid Python value.
+      """)
+    self.assertEqual(assert_raises.exception.lineno, 3)
+    self.assertEqual(assert_raises.exception.offset, 30)
+    self.assertEqual(
+        assert_raises.exception.text.strip(),
+        'scope/some_fn.arg2 = Garbage  # <-- Not a valid Python value.')
+    six.assertRegex(self, str(assert_raises.exception),
+                    r"malformed (string|node or string: <_ast.Name [^\n]+>)\n"
+                    r"    Failed to parse token 'Garbage' \(line 3\)")
+
+  def testSyntaxCornerCases(self):
+    # Trailing commas are ok.
+    self._validate_against_literal_eval('[1, 2, 3,]')
+    # Two trailing commas are not ok.
+    self._assert_raises_syntax_error('[1, 2, 3,,]')
+
+    # Parens without trailing comma is not a tuple.
+    self._validate_against_literal_eval('(1)')
+    # Parens with trailing comma is a tuple.
+    self._validate_against_literal_eval('(1,)')
+
+    # Newlines inside a container are ok.
+    self._validate_against_literal_eval("""{
+        1: 2, 3: 4
+    }""")
+    self._validate_against_literal_eval("""(-
+        5)""")
+    # Newlines outside a container are not ok.
+    self._assert_raises_syntax_error("""
+        [1, 2, 3]""")
+
+    # Missing quotes are bad.
+    self._assert_raises_syntax_error("'missing quote")
+
+    # Adjacent strings concatenate.
+    value = self._parse_value("""(
+        'one ' 'two '
+        'three'
+    )""")
+    # They also concatenate when doing explicit line continuation.
+    self.assertEqual(value, 'one two three')
+    value = self._parse_value(r"""'one ' \
+        'two ' \
+        'three'
+    """)
+    self.assertEqual(value, 'one two three')
+
+    # Triple-quoted strings work fine.
+    self._validate_against_literal_eval('''"""
+      I'm a triple quoted string!
+    """''')
+    self._validate_against_literal_eval("""'''
+      I'm a triple quoted string too!
+    '''""")
+
+  def testConfigurableReferences(self):
+    configurable_reference = self._parse_value('@a/scoped/configurable')
+    self.assertEqual(configurable_reference.name, 'a/scoped/configurable')
+    self.assertFalse(configurable_reference.evaluate)
+
+    configurable_reference = self._parse_value('@a/scoped/configurable()')
+    self.assertEqual(configurable_reference.name, 'a/scoped/configurable')
+    self.assertTrue(configurable_reference.evaluate)
+
+    # Space after @ and around parens is ok, if hideous.
+    configurable_reference = self._parse_value('@ a/scoped/configurable ( )')
+    self.assertEqual(configurable_reference.name, 'a/scoped/configurable')
+    self.assertTrue(configurable_reference.evaluate)
+
+    configurable_reference = self._parse_value('@ configurable ( )')
+    self.assertEqual(configurable_reference.name, 'configurable')
+    self.assertTrue(configurable_reference.evaluate)
+
+    # Spaces inside the configurable name or scope are verboten.
+    self._assert_raises_syntax_error('@a / scoped /configurable')
+
+    # Configurable references deep in the bowels of a nested structure work too.
+    literal = """{
+      'some key': [1, 2, (@a/reference(),)]
+    }"""
+    value = self._parse_value(literal)
+    configurable_reference = value['some key'][2][0]
+    self.assertEqual(configurable_reference.name, 'a/reference')
+    self.assertTrue(configurable_reference.evaluate)
+
+    # Test a list of configurable references.
+    value = self._parse_value('[@ref1, @scoped/ref2, @ref3]')
+    self.assertEqual(len(value), 3)
+    self.assertEqual(value[0].name, 'ref1')
+    self.assertFalse(value[0].evaluate)
+    self.assertEqual(value[1].name, 'scoped/ref2')
+    self.assertFalse(value[1].evaluate)
+    self.assertEqual(value[2].name, 'ref3')
+    self.assertFalse(value[2].evaluate)
+
+    # Test mix of configurable references with output references.
+    value = self._parse_value('[@ref1(), @scoped/ref2(), @ref3]')
+    self.assertEqual(len(value), 3)
+    self.assertEqual(value[0].name, 'ref1')
+    self.assertTrue(value[0].evaluate)
+    self.assertEqual(value[1].name, 'scoped/ref2')
+    self.assertTrue(value[1].evaluate)
+    self.assertEqual(value[2].name, 'ref3')
+    self.assertFalse(value[2].evaluate)
+
+    multiline = r"""[
+      @ref1
+    ]"""
+    value = self._parse_value(multiline)
+    self.assertEqual(len(value), 1)
+    self.assertEqual(value[0].name, 'ref1')
+    self.assertFalse(value[0].evaluate)
+
+  def testAliases(self):
+    value = self._parse_value('%pele')
+    self.assertIsInstance(value, _TestAlias)
+    self.assertEqual(value.name, 'pele')
+
+    value = self._parse_value('%one.two.three')
+    self.assertIsInstance(value, _TestAlias)
+    self.assertEqual(value.name, 'one.two.three')
+
+    # Commit all kinds of atrocities with whitespace here.
+    value_str = """[%ronaldinho,
+      ( %robert/galbraith, {
+        'Samuel Clemens':       %mark/twain,
+        'Charles Dodgson':
+%lewis/carroll     ,
+'Eric Blair':            %george_orwell})
+    ]"""
+    expected_result = [
+        _TestAlias('ronaldinho'), (_TestAlias('robert/galbraith'), {
+            'Samuel Clemens': _TestAlias('mark/twain'),
+            'Charles Dodgson': _TestAlias('lewis/carroll'),
+            'Eric Blair': _TestAlias('george_orwell')
+        })
+    ]
+    value = self._parse_value(value_str)
+    self.assertEqual(value, expected_result)
+
+    # But it doesn't do anything foul to newlines.
+    still_an_error = """function.arg =
+%alias"""
+    with self.assertRaises(SyntaxError):
+      self._parse_config(still_an_error)
+
+  def testScopeAndSelectorFormat(self):
+    config = self._parse_config("""
+      a = 0
+      a1.B2.c = 1
+      scope/name = %alias
+      scope/fn.param = %a.b  # Periods in aliases are OK (e.g. for constants).
+      a/scope/fn.param = 4
+    """)
+    self.assertEqual(config['', 'a'], {'': 0})
+    self.assertEqual(config['', 'a1.B2'], {'c': 1})
+    self.assertEqual(config['scope', 'name'], {'': _TestAlias('alias')})
+    self.assertEqual(config['scope', 'fn'], {'param': _TestAlias('a.b')})
+    self.assertEqual(config['a/scope', 'fn'], {'param': 4})
+
+    with self.assertRaises(SyntaxError):
+      self._parse_config('1a = 3')
+    with self.assertRaises(SyntaxError):
+      self._parse_config('dotted.scope/name.value = 3')
+    with self.assertRaises(SyntaxError):
+      self._parse_config('a..b = 3')
+    with self.assertRaises(SyntaxError):
+      self._parse_config('a/.b = 3')
+    with self.assertRaises(SyntaxError):
+      self._parse_config('a/b. = 3')
+    with self.assertRaises(SyntaxError):
+      self._parse_config('a//b = 3')
+    with self.assertRaises(SyntaxError):
+      self._parse_config('//b = 3')
+
+  def testParseImports(self):
+    config_str = """
+      import some.module.name  # Comment afterwards ok.
+      import another.module.name
+    """
+    _, imports, _ = self._parse_config(config_str, only_bindings=False)
+    self.assertEqual(imports, ['some.module.name', 'another.module.name'])
+
+    with self.assertRaises(SyntaxError):
+      self._parse_config('import a.0b')
+    with self.assertRaises(SyntaxError):
+      self._parse_config('import a.b.')
+
+  def testParseIncludes(self):
+    config_str = """
+      include 'a/file/path.gin'
+      include "another/" "path.gin"
+    """
+    _, _, includes = self._parse_config(config_str, only_bindings=False)
+    self.assertEqual(includes, ['a/file/path.gin', 'another/path.gin'])
+
+    with self.assertRaises(SyntaxError):
+      self._parse_config('include path/to/file.gin')
+    with self.assertRaises(SyntaxError):
+      self._parse_config('include None')
+    with self.assertRaises(SyntaxError):
+      self._parse_config('include 123')
+
+  def testParseConfig(self):
+    config_str = r"""
+      # Leading comments are cool.
+
+      import some.module.with.configurables
+      import another.module.providing.configs
+
+      include 'another/gin/file.gin'
+
+      a/b/c/d.param_name = {
+          'super sweet': 'multi line',
+          'dictionary': '!',  # And trailing comments too.
+      }
+
+      include 'path/to/config/file.gin'
+
+      # They work fine in the middle.
+      import module
+
+      # Line continuations are fine!
+      moar.goodness = \
+        ['a', 'moose']
+
+      # And at the end!
+    """
+    config, imports, includes = self._parse_config(
+        config_str, only_bindings=False)
+
+    expected_config = {
+        ('a/b/c', 'd'): {
+            'param_name': {
+                'super sweet': 'multi line',
+                'dictionary': '!'
+            }
+        },
+        ('', 'moar'): {
+            'goodness': ['a', 'moose']
+        }
+    }
+    self.assertEqual(config, expected_config)
+
+    expected_imports = [
+        'some.module.with.configurables', 'another.module.providing.configs',
+        'module'
+    ]
+    self.assertEqual(imports, expected_imports)
+
+    expected_includes = ['another/gin/file.gin', 'path/to/config/file.gin']
+    self.assertEqual(includes, expected_includes)
+
+
+if __name__ == '__main__':
+  absltest.main()

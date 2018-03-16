@@ -1,0 +1,5 @@
+my_other_func.a = -2.9
+my_other_func.b = 9.3
+
+# Comments!
+my_other_func.c = 'Oh, Dear.'
