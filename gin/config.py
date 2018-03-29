@@ -1470,10 +1470,6 @@ def config_is_locked():
   return _CONFIG_IS_LOCKED
 
 
-def config_is_unlocked():
-  return not _CONFIG_IS_LOCKED
-
-
 def _set_config_is_locked(is_locked):
   global _CONFIG_IS_LOCKED
   _CONFIG_IS_LOCKED = is_locked
@@ -1490,18 +1486,16 @@ def unlock_config():
         ...
         gin.bind_parameter(...)
 
-  Raises:
-    RuntimeError: If the config is not locked.
+  In the case where the config is already unlocked, this does nothing (the
+  config remains unlocked).
 
   Yields:
     None.
   """
-  if not config_is_locked():
-    err_str = 'The config is already unlocked. Was gin.finalize() called?'
-    raise RuntimeError(err_str)
+  config_was_locked = config_is_locked()
   _set_config_is_locked(False)
   yield
-  _set_config_is_locked(True)
+  _set_config_is_locked(config_was_locked)
 
 
 def finalize():

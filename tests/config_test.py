@@ -1039,12 +1039,13 @@ class ConfigTest(absltest.TestCase):
       config.external_configurable(RuntimeError)
 
   def testUnlockConfig(self):
-    with six.assertRaisesRegex(self, RuntimeError, 'The config is already'):
-      with config.unlock_config():
-        pass
+    with config.unlock_config():
+      pass
+    self.assertFalse(config.config_is_locked())
     config.finalize()
     with config.unlock_config():
       config.parse_config('configurable2.kwarg1 = 3')
+    self.assertTrue(config.config_is_locked())
     self.assertEqual(configurable2(1), (1, 3))
 
   def testFinalizeHooks(self):
