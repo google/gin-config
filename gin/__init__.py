@@ -23,6 +23,8 @@ from gin.config import configurable
 from gin.config import constant
 from gin.config import current_scope
 from gin.config import current_scope_str
+from gin.config import enter_interactive_mode
+from gin.config import exit_interactive_mode
 from gin.config import external_configurable
 from gin.config import finalize
 from gin.config import operative_config_str

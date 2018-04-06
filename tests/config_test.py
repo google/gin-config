@@ -1025,6 +1025,38 @@ class ConfigTest(absltest.TestCase):
     aliases = list(config.iterate_references(config._CONFIG, to=config.alias))
     self.assertLen(aliases, 3)
 
+  def testInteractiveMode(self):
+    @config.configurable('duplicate_fn')
+    def duplicate_fn1():  # pylint: disable=unused-variable
+      return 'duplicate_fn1'
+
+    with six.assertRaisesRegex(self, ValueError, 'A configurable matching'):
+      @config.configurable('duplicate_fn')
+      def duplicate_fn2():  # pylint: disable=unused-variable
+        pass
+
+    config_str = """
+      ConfigurableClass.kwarg1 = @duplicate_fn()
+    """
+    config.parse_config(config_str)
+    self.assertEqual(ConfigurableClass().kwarg1, 'duplicate_fn1')
+
+    with config.interactive_mode():
+      @config.configurable('duplicate_fn')
+      def duplicate_fn3():  # pylint: disable=unused-variable
+        return 'duplicate_fn3'
+
+    with six.assertRaisesRegex(self, ValueError, 'A configurable matching'):
+      @config.configurable('duplicate_fn')
+      def duplicate_fn4():  # pylint: disable=unused-variable
+        pass
+
+    config_str = """
+      ConfigurableClass.kwarg1 = @duplicate_fn()
+    """
+    config.parse_config(config_str)
+    self.assertEqual(ConfigurableClass().kwarg1, 'duplicate_fn3')
+
   def testFinalizeLocksConfig(self):
     config.finalize()
     with self.assertRaises(RuntimeError):

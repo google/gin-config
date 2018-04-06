@@ -125,6 +125,9 @@ _ACTIVE_SCOPES = [[]]
 _FINALIZE_HOOKS = []
 # Keeps track of whether the config is locked.
 _CONFIG_IS_LOCKED = False
+# Keeps track of whether "interactive mode" is enabled, in which case redefining
+# a configurable is not an error.
+_INTERACTIVE_MODE = False
 
 # Keeps track of constants created via gin.constant, to both prevent duplicate
 # definitions and to avoid writing them to the operative config.
@@ -893,7 +896,7 @@ def _make_configurable(fn_or_cls,
     raise ValueError("Module '{}' is invalid.".format(module))
 
   selector = module + '.' + name if module else name
-  if selector in _REGISTRY:
+  if not _INTERACTIVE_MODE and selector in _REGISTRY:
     err_str = "A configurable matching '{}' already exists."
     raise ValueError(err_str.format(selector))
 
@@ -1496,6 +1499,25 @@ def unlock_config():
   _set_config_is_locked(False)
   yield
   _set_config_is_locked(config_was_locked)
+
+
+def enter_interactive_mode():
+  global _INTERACTIVE_MODE
+  _INTERACTIVE_MODE = True
+
+
+def exit_interactive_mode():
+  global _INTERACTIVE_MODE
+  _INTERACTIVE_MODE = False
+
+
+@contextlib.contextmanager
+def interactive_mode():
+  try:
+    enter_interactive_mode()
+    yield
+  finally:
+    exit_interactive_mode()
 
 
 def finalize():
