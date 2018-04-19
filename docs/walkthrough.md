@@ -18,6 +18,9 @@ Gin](b/issues?q=componentid:193973%20status:open) \
 **Authors**: [Dan Holtmann-Rice](teams@dhr), [Sergio
 Guadarrama](teams@sguada), Nathan Silberman (Xoogler)
 
+
+This is not an official Google product.
+
 ## Full user-guide
 
 The full user-guide can be found at

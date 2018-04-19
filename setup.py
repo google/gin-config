@@ -37,36 +37,51 @@ setup(
     name='gin-config',
     version='0.1',
     include_package_data=True,
-    packages=find_packages(exclude=['contrib', 'tests']),  # Required
+    packages=find_packages(exclude=['docs']),  # Required
     package_data={'testdata': ['testdata/*.gin']},
+    install_requires=['six >= 1.10.0'],
     extras_require={  # Optional
-        'tf': ['tensorflow'],
-        'test': ['coverage'],
+        'tf': ['tensorflow >= 1.6'],
     },
+    tests_require=['six >= 1.10.0', 'absl-py >= 0.1.6'],
     description='Gin-config: a lightweight configuration library for Python',
     long_description=long_description,
     url='https://github.com/google/gin-config',  # Optional
     author='The Gin-Config Team',  # Optional
+    author_email='opensource@google.com',
     classifiers=[  # Optional
         'Development Status :: 3 - Alpha',
 
         # Indicate who your project is intended for
         'Intended Audience :: Developers',
-        'Topic :: Software Development :: ML Tools',
+        'Intended Audience :: Education',
+        'Intended Audience :: Science/Research',
 
         # Pick your license as you wish
-        'License :: OSI Approved :: Apache License',
+        'License :: OSI Approved :: Apache Software License',
 
         # Specify the Python versions you support here. In particular, ensure
         # that you indicate whether you support Python 2, Python 3 or both.
+        'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
+
+        'Topic :: Scientific/Engineering',
+        'Topic :: Scientific/Engineering :: Mathematics',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Topic :: Software Development',
+        'Topic :: Software Development :: Libraries',
+        'Topic :: Software Development :: Libraries :: Python Modules',
+
     ],
     project_urls={  # Optional
+        'Documentation': 'https://github.com/google/gin-config/docs',
         'Bug Reports': 'https://github.com/google/gin-config/issues',
         'Source': 'https://github.com/google/gin-config',
     },
+    license='Apache 2.0',
+    keywords='gin-config gin python configuration machine learning'
 )
