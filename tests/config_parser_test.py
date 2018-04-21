@@ -85,10 +85,17 @@ class _TestAlias(collections.namedtuple('_TestAlias', ['name'])):
 
 class _TestParserDelegate(config_parser.ParserDelegate):
 
+  def __init__(self, raise_error=False):
+    self._raise_error = raise_error
+
   def configurable_reference(self, scoped_name, evaluate):
+    if self._raise_error:
+      raise ValueError('Unknown configurable.')
     return _TestConfigurableReference(scoped_name, evaluate)
 
   def alias(self, scoped_name):
+    if self._raise_error:
+      raise ValueError('Bad alias.')
     return _TestAlias(scoped_name)
 
 
@@ -106,15 +113,19 @@ class ConfigParserTest(absltest.TestCase):
     with self.assertRaises(SyntaxError):
       self._parse_value(literal)
 
-  def _parse_config(self, config_str, only_bindings=True):
-    parser = config_parser.ConfigParser(config_str, _TestParserDelegate())
+  def _parse_config(self,
+                    config_str,
+                    only_bindings=True,
+                    generate_unknown_reference_errors=False):
+    parser = config_parser.ConfigParser(
+        config_str, _TestParserDelegate(generate_unknown_reference_errors))
 
     config = {}
     imports = []
     includes = []
     for statement in parser:
       if isinstance(statement, config_parser.BindingStatement):
-        scope, selector, arg_name, value = statement
+        scope, selector, arg_name, value, _ = statement
         config.setdefault((scope, selector), {})[arg_name] = value
       elif isinstance(statement, config_parser.ImportStatement):
         imports.append(statement.module)
@@ -142,13 +153,30 @@ class ConfigParserTest(absltest.TestCase):
         scope/some_fn.arg2 = Garbage  # <-- Not a valid Python value.
       """)
     self.assertEqual(assert_raises.exception.lineno, 3)
-    self.assertEqual(assert_raises.exception.offset, 30)
+    self.assertEqual(assert_raises.exception.offset, 29)
     self.assertEqual(
         assert_raises.exception.text.strip(),
         'scope/some_fn.arg2 = Garbage  # <-- Not a valid Python value.')
     six.assertRegex(self, str(assert_raises.exception),
                     r"malformed (string|node or string: <_ast.Name [^\n]+>)\n"
                     r"    Failed to parse token 'Garbage' \(line 3\)")
+
+  def testUnknownConfigurableAndAlias(self):
+    with six.assertRaisesRegex(self, ValueError, 'line 2\n.*@raise_an_error'):
+      self._parse_config(
+          '\n'.join([
+              'some_fn.arg1 = None',
+              'some_fn.arg2 = @raise_an_error',
+          ]),
+          generate_unknown_reference_errors=True)
+
+    with six.assertRaisesRegex(self, ValueError, 'line 2\n.*%raise_an_error'):
+      self._parse_config(
+          '\n'.join([
+              'some_fn.arg1 = None',
+              'some_fn.arg2 = %raise_an_error',
+          ]),
+          generate_unknown_reference_errors=True)
 
   def testSyntaxCornerCases(self):
     # Trailing commas are ok.

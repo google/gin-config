@@ -343,6 +343,14 @@ class ConfigTest(absltest.TestCase):
     with self.assertRaises(IOError):
       config.parse_config("include 'nonexistent/file'")
 
+  def testInvalidIncludeError(self):
+    config_file = '{}/gin/testdata/invalid_include.gin'
+    path_prefix = absltest.get_default_test_srcdir()
+    err_msg_regex = ('Unable to open file: not/a/valid/file.gin\n'
+                     '  In file ".*/invalid_include.gin", line 1')
+    with six.assertRaisesRegex(self, IOError, err_msg_regex):
+      config.parse_config_file(config_file.format(path_prefix))
+
   def testExplicitParametersOverrideGin(self):
     config_str = """
       configurable1.non_kwarg = 'non_kwarg'
@@ -357,6 +365,16 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(kwarg1, 'ahoy')
     self.assertEqual(kwarg2, None)
     self.assertEqual(kwarg3, 'matey!')
+
+  def testUnknownReference(self):
+    config_str = """
+      ConfigurableClass.kwarg1 = 'okie dokie'
+      unknown.kwarg1 = 'kwarg1'
+    """
+    expected_err_msg = ("No configurable matching 'unknown'.\n"
+                        "  In bindings string line 3")
+    with six.assertRaisesRegex(self, ValueError, expected_err_msg):
+      config.parse_config(config_str)
 
   def testSkipUnknown(self):
     config_str = """
@@ -418,7 +436,7 @@ class ConfigTest(absltest.TestCase):
   def testParameterValidation(self):
     config.parse_config('var_arg_fn.anything_is_fine = 0')
 
-    err_regexp = ".* doesn't have a parameter"
+    err_regexp = ".* doesn't have a parameter.*\n  In bindings string line 1"
     with six.assertRaisesRegex(self, ValueError, err_regexp):
       config.parse_config('configurable2.not_a_parameter = 0')
     with six.assertRaisesRegex(self, ValueError, err_regexp):
@@ -434,6 +452,29 @@ class ConfigTest(absltest.TestCase):
     with six.assertRaisesRegex(self, ValueError, err_regexp):
       config.external_configurable(
           lambda arg: arg, 'lambda4', whitelist=['nonexistent'])
+
+  def testMissingPositionalParameter(self):
+    config.parse_config("""
+       required_args.arg2 = None
+       required_args.kwarg2 = None
+    """)
+    err_regexp = (r".*\n  No values supplied .*: \['arg3'\]\n"
+                  r"  Gin had values bound for: \['arg2', 'kwarg2'\]\n"
+                  r"  Caller supplied values for: \['arg1', 'kwarg1'\]")
+    with six.assertRaisesRegex(self, TypeError, err_regexp):
+      required_args(None, kwarg1=None)  # pylint: disable=no-value-for-parameter
+
+  def testMissingPositionalParameterVarargs(self):
+    config.parse_config("""
+       required_with_vargs.arg2 = None
+       required_with_vargs.kwarg2 = None
+    """)
+    err_regexp = (r".*\n  No values supplied .*: \['arg3'\]\n"
+                  r"  Gin had values bound for: \['arg2', 'kwarg2'\]\n"
+                  r"  Caller supplied values for: \['arg1', 'kwarg1'\]")
+    with six.assertRaisesRegex(self, TypeError, err_regexp):
+      # pylint: disable=no-value-for-parameter
+      required_with_vargs(None, kwarg1=None)
 
   def testSubclassParametersOverrideSuperclass(self):
     config_str = """

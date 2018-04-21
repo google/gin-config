@@ -30,7 +30,7 @@ from gin import config
 
 
 # Register TF file reader for Gin's parse_config_file.
-config.register_file_reader(tf.gfile.Open, tf.errors.NotFoundError)
+config.register_file_reader(tf.gfile.Open, tf.gfile.Exists)
 
 
 @config.configurable

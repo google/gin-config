@@ -91,8 +91,8 @@ import copy
 import functools
 import inspect
 import logging
+import os
 import pprint
-import sys
 
 import enum
 
@@ -100,6 +100,7 @@ import six
 
 from gin import config_parser
 from gin import selector_map
+from gin import utils
 
 
 # Maintains the registry of configurable functions and classes.
@@ -141,7 +142,7 @@ _SINGLETONS = {}
 # config files. Each element of this list should be a tuple of `(function,
 # exception_type)`, where `exception_type` is the type of exception thrown by
 # `function` when a file can't be opened/read successfully.
-_FILE_READERS = [(open, IOError)]
+_FILE_READERS = [(open, os.path.isfile)]
 
 # Maintains a cache of argspecs for functions.
 _ARG_SPEC_CACHE = {}
@@ -223,31 +224,6 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, subclass=False):
     decorated_fn = staticmethod(decorated_fn)
   setattr(cls, construction_fn.__name__, decorated_fn)
   return cls
-
-
-def _augment_exception_message_and_reraise(exception, message):
-  """Reraises `exception`, appending `message` to its string representation."""
-
-  class ExceptionProxy(type(exception)):
-    __module__ = type(exception).__module__
-
-    def __init__(self):
-      pass
-
-    def __getattr__(self, attr_name):
-      return getattr(exception, attr_name)
-
-    def __str__(self):
-      return str(exception) + message
-
-  ExceptionProxy.__name__ = type(exception).__name__
-
-  proxy = ExceptionProxy()
-  if six.PY3:
-    ExceptionProxy.__qualname__ = type(exception).__qualname__
-    six.raise_from(proxy.with_traceback(exception.__traceback__), None)
-  else:
-    six.reraise(proxy, None, sys.exc_info()[2])
 
 
 class Configurable(
@@ -704,11 +680,20 @@ def _get_cached_arg_spec(fn):
   return arg_spec
 
 
-def _get_positional_parameter_names(fn, args):
+def _get_supplied_positional_parameter_names(fn, args):
   """Returns the names of the supplied arguments to the given function."""
   arg_spec = _get_cached_arg_spec(fn)
   # May be shorter than len(args) if args contains vararg (*args) arguments.
   return arg_spec.args[:len(args)]
+
+
+def _get_all_positional_parameter_names(fn):
+  """Returns the names of all positional arguments to the given function."""
+  arg_spec = _get_cached_arg_spec(fn)
+  args = arg_spec.args
+  if arg_spec.defaults:
+    args = args[:-len(arg_spec.defaults)]
+  return args
 
 
 def _get_default_configurable_parameter_values(fn, whitelist, blacklist):
@@ -924,15 +909,16 @@ def _make_configurable(fn_or_cls,
       for i in range(len(scope_components) + 1):
         partial_scope_str = '/'.join(scope_components[:i])
         new_kwargs.update(_CONFIG.get((partial_scope_str, selector), {}))
+      gin_bound_args = list(new_kwargs.keys())
       scope_str = partial_scope_str
 
-      arg_names = _get_positional_parameter_names(fn, args)
+      arg_names = _get_supplied_positional_parameter_names(fn, args)
 
       for arg in args[len(arg_names):]:
         if arg is REQUIRED:
           raise ValueError(
-              'gin.REQUIRED is not allowed for unnamed (vararg) parameters. If'
-              ' the function being called is wrapped by a non-Gin decorator, '
+              'gin.REQUIRED is not allowed for unnamed (vararg) parameters. If '
+              'the function being called is wrapped by a non-Gin decorator, '
               'try explicitly providing argument names for positional '
               'parameters.')
 
@@ -1017,10 +1003,28 @@ def _make_configurable(fn_or_cls,
       try:
         return fn(*new_args, **new_kwargs)
       except Exception as e:  # pylint: disable=broad-except
-        err_str = "\n  In call to configurable '{}' ({}){}"
+        err_str = ''
+        if isinstance(e, TypeError):
+          all_arg_names = _get_all_positional_parameter_names(fn)
+          if len(new_args) < len(all_arg_names):
+            unbound_positional_args = list(
+                set(all_arg_names[len(new_args):]) - set(new_kwargs))
+            if unbound_positional_args:
+              caller_supplied_args = list(
+                  set(arg_names + list(kwargs)) -
+                  set(required_arg_names + list(required_kwargs)))
+              fmt = ('\n  No values supplied by Gin or caller for arguments: {}'
+                     '\n  Gin had values bound for: {gin_bound_args}'
+                     '\n  Caller supplied values for: {caller_supplied_args}')
+              canonicalize = lambda x: list(map(str, sorted(x)))
+              err_str += fmt.format(
+                  canonicalize(unbound_positional_args),
+                  gin_bound_args=canonicalize(gin_bound_args),
+                  caller_supplied_args=canonicalize(caller_supplied_args))
+        err_str += "\n  In call to configurable '{}' ({}){}"
         scope_info = " in scope '{}'".format(scope_str) if scope_str else ''
         err_str = err_str.format(name, fn, scope_info)
-        _augment_exception_message_and_reraise(e, err_str)
+        utils.augment_exception_message_and_reraise(e, err_str)
 
     return wrapper
 
@@ -1342,13 +1346,15 @@ def parse_config(bindings, skip_unknown=False):
   parser = config_parser.ConfigParser(bindings, ParserDelegate(skip_unknown))
   for statement in parser:
     if isinstance(statement, config_parser.BindingStatement):
-      scope, selector, arg_name, value = statement
+      scope, selector, arg_name, value, location = statement
       if not arg_name:
         alias_name = '{}/{}'.format(scope, selector) if scope else selector
-        bind_parameter((alias_name, 'gin.alias', 'value'), value)
+        with utils.try_with_location(location):
+          bind_parameter((alias_name, 'gin.alias', 'value'), value)
         continue
       if not _should_skip(selector, skip_unknown):
-        bind_parameter((scope, selector, arg_name), value)
+        with utils.try_with_location(location):
+          bind_parameter((scope, selector, arg_name), value)
     elif isinstance(statement, config_parser.ImportStatement):
       if skip_unknown:
         try:
@@ -1358,10 +1364,12 @@ def parse_config(bindings, skip_unknown=False):
           log_str = 'Skipping import of unknown module `%s` (skip_unknown=%r).'
           logging.info(log_str, statement.module, skip_unknown)
       else:
-        __import__(statement.module)
+        with utils.try_with_location(statement.location):
+          __import__(statement.module)
         _IMPORTED_MODULES.add(statement.module)
     elif isinstance(statement, config_parser.IncludeStatement):
-      parse_config_file(statement.filename, skip_unknown)
+      with utils.try_with_location(statement.location):
+        parse_config_file(statement.filename, skip_unknown)
     else:
       raise AssertionError('Unrecognized statement type {}.'.format(statement))
 
@@ -1380,23 +1388,23 @@ def register_file_reader(*args):
         ...
 
   Args:
-    *args: (When used as a decorator, only the exception type is supplied.)
+    *args: (When used as a decorator, only the existence check is supplied.)
       - file_reader_fn: The file reader function to register. This should be a
         function that can be used as a context manager to open a file and
         provide a file-like object, similar to Python's built-in `open`.
-      - exception_type: The type of exception thrown by `file_reader_fn` when a
-        file can't be read successfully (e.g., `IOError`). May also be a tuple.
+      - is_readable_fn: A function taking the file path and returning a boolean
+        indicating whether the file can be read by `file_reader_fn`.
 
   Returns:
     `None`, or when used as a decorator, a function that will perform the
-    registration using the supplied exception type.
+    registration using the supplied readability predicate.
   """
-  def do_registration(file_reader_fn, exception_type):
+  def do_registration(file_reader_fn, is_readable_fn):
     if file_reader_fn not in zip(*_FILE_READERS)[0]:
-      _FILE_READERS.append((file_reader_fn, exception_type))
+      _FILE_READERS.append((file_reader_fn, is_readable_fn))
 
   if len(args) == 1:  # It's a decorator.
-    return functools.partial(do_registration, exception_type=args[0])
+    return functools.partial(do_registration, is_readable_fn=args[0])
   elif len(args) == 2:
     do_registration(*args)
   else:  # 0 or > 2 arguments supplied.
@@ -1417,13 +1425,11 @@ def parse_config_file(config_file, skip_unknown=False):
   Raises:
     IOError: If `config_file` cannot be read using any register file reader.
   """
-  for reader, io_exception_type in _FILE_READERS:
-    try:
+  for reader, existence_check in _FILE_READERS:
+    if existence_check(config_file):
       with reader(config_file) as f:
         parse_config(f, skip_unknown=skip_unknown)
         return
-    except io_exception_type:
-      continue
   raise IOError('Unable to open file: {}'.format(config_file))
 
 

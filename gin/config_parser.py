@@ -29,6 +29,7 @@ import tokenize
 import six
 
 from gin import selector_map
+from gin import utils
 
 # A regular expression matching a valid module identifier. A valid module
 # identifier consists of one or more valid identifiers (see below), separated by
@@ -73,17 +74,19 @@ class ParserDelegate(object):
 
 
 class BindingStatement(
-    collections.namedtuple('BindingStatement',
-                           ['scope', 'selector', 'arg_name', 'value'])):
+    collections.namedtuple(
+        'BindingStatement',
+        ['scope', 'selector', 'arg_name', 'value', 'location'])):
   pass
 
 
-class ImportStatement(collections.namedtuple('ImportStatement', ['module'])):
+class ImportStatement(
+    collections.namedtuple('ImportStatement', ['module', 'location'])):
   pass
 
 
 class IncludeStatement(
-    collections.namedtuple('IncludeStatement', ['filename'])):
+    collections.namedtuple('IncludeStatement', ['filename', 'location'])):
   pass
 
 
@@ -185,25 +188,27 @@ class ConfigParser(object):
     if self._current_token.kind == tokenize.ENDMARKER:
       return None
 
+    # Save off location, but ignore char_num for any statement-level errors.
+    stmt_loc = self._current_location(ignore_char_num=True)
     binding_key_or_keyword = self._parse_selector()
     statement = None
     if self._current_token.value != '=':
       if binding_key_or_keyword == 'import':
         module = self._parse_selector(scoped=False)
-        statement = ImportStatement(module)
+        statement = ImportStatement(module, stmt_loc)
       elif binding_key_or_keyword == 'include':
-        location = self._current_location()
+        str_loc = self._current_location()
         success, filename = self._maybe_parse_basic_type()
         if not success or not isinstance(filename, str):
-          self._raise_syntax_error('Expected file path as string.', location)
-        statement = IncludeStatement(filename)
+          self._raise_syntax_error('Expected file path as string.', str_loc)
+        statement = IncludeStatement(filename, stmt_loc)
       else:
         self._raise_syntax_error("Expected '='.")
     else:  # We saw an '='.
       self._advance_one_token()
       value = self.parse_value()
       scope, selector, arg_name = parse_binding_key(binding_key_or_keyword)
-      statement = BindingStatement(scope, selector, arg_name, value)
+      statement = BindingStatement(scope, selector, arg_name, value, stmt_loc)
 
     assert statement, 'Internal parsing error.'
 
@@ -250,9 +255,11 @@ class ConfigParser(object):
     self._advance_one_token()
     self._skip_whitespace_and_comments()
 
-  def _current_location(self):
+  def _current_location(self, ignore_char_num=False):
     line_num, char_num = self._current_token.begin
-    return (self._filename, line_num, char_num + 1, self._current_token.line)
+    if ignore_char_num:
+      char_num = None
+    return (self._filename, line_num, char_num, self._current_token.line)
 
   def _raise_syntax_error(self, msg, location=None):
     if not location:
@@ -392,6 +399,7 @@ class ConfigParser(object):
     if self._current_token.value != '@':
       return False, None
 
+    location = self._current_location()
     self._advance_one_token()
     scoped_name = self._parse_selector(allow_periods_in_scope=True)
 
@@ -404,17 +412,24 @@ class ConfigParser(object):
       self._advance_one_token()
     self._skip_whitespace_and_comments()
 
-    return True, self._delegate.configurable_reference(scoped_name, evaluate)
+    with utils.try_with_location(location):
+      reference = self._delegate.configurable_reference(scoped_name, evaluate)
+
+    return True, reference
 
   def _maybe_parse_alias(self):
     """Try to parse an alias (%scope/name)."""
     if self._current_token.value != '%':
       return False, None
 
+    location = self._current_location()
     self._advance_one_token()
     scoped_name = self._parse_selector(allow_periods_in_scope=True)
 
-    return True, self._delegate.alias(scoped_name)
+    with utils.try_with_location(location):
+      alias = self._delegate.alias(scoped_name)
+
+    return True, alias
 
 
 def parse_scoped_selector(scoped_selector):
