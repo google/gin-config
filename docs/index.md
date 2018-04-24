@@ -141,7 +141,7 @@ def train_model(network_fn, data, learning_rate, optimizer):
   ...
 ```
 
-We might configure this code as follows:
+We might configure this code in the Gin file as follows:
 
     train_model.network_fn = @DNN()  # An instance of DNN is passed.
     train_model.optimizer = @MomentumOptimizer  # The class itself is passed.
