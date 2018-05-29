@@ -21,6 +21,7 @@ from gin.config import config_is_locked
 from gin.config import config_scope
 from gin.config import configurable
 from gin.config import constant
+from gin.config import constants_from_enum
 from gin.config import current_scope
 from gin.config import current_scope_str
 from gin.config import enter_interactive_mode
