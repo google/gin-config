@@ -278,13 +278,13 @@ Additional features described in more detail in the [user guide] include:
 
 -   Automatic logging of all configured parameter values (the ["operative
     config"][operative config]), including [TensorBoard integration].
--   ["Aliases"][aliases], essentially macross, to specify a value used in
-    multiple places within a config, as well as Python-defined constants.
+-   ["Macros"][macros], essentially macross, to specify a value used in multiple
+    places within a config, as well as Python-defined constants.
 -   [Module imports][imports] and [config file inclusion][includes].
 -   [Disambiguation][modules] of configurable names via modules.
 
 [operative config]: https://github.com/google/gin-config/tree/master/docs/index.md#operative-config
-[aliases]: https://github.com/google/gin-config/tree/master/docs/index.md#aliases
+[macros]: https://github.com/google/gin-config/tree/master/docs/index.md#macros
 [imports]: https://github.com/google/gin-config/tree/master/docs/index.md#importing-modules-from-within-a-gin-file
 [includes]: https://github.com/google/gin-config/tree/master/docs/index.md#including-other-gin-files
 [TensorBoard integration]: https://github.com/google/gin-config/tree/master/docs/index.md#config-saver-hook
@@ -303,7 +303,7 @@ changed in backwards-incompatible ways. We recommend the following best
 practices:
 
 -   Minimize use of evaluated configurable references (`@name()`), especially
-    when combined with aliases (where the fact that the value is not cached may
+    when combined with macros (where the fact that the value is not cached may
     be surprising to new users).
 -   Avoid nesting of scopes (i.e., `scope1/scope2/function_name`). While
     supported there is some ongoing debate around ordering and behavior.
@@ -356,12 +356,10 @@ include a dotted module name prefix (`some.module.function_name`).
 | `@scope/some_name`         | A scoped reference. When this is called, the    |
 :                            : call will be within scope `scope`, applying an  :
 :                            : relevant scoped bindings.                       :
-| `ALIAS_NAME = value`       | An alias. This provides a shorthand name for    |
-:                            : the value on the right hand side. This can be   :
-:                            : thought of as a macro.                          :
-| `%ALIAS_NAME`              | A reference to the alias `ALIAS_NAME`. This has |
-:                            : the effect of replacing `%ALIAS_NAME` with      :
-:                            : whatever value it was associated with. Note in  :
-:                            : particular that the result of evaluated         :
-:                            : references are not cached by aliases; they      :
-:                            : behave like macros.                             :
+| `MACRO_NAME = value`       | A macro. This provides a shorthand name for the |
+:                            : expression on the right hand side.              :
+| `%MACRO_NAME`              | A reference to the macro `MACRO_NAME`. This has |
+:                            : the effect of "textually" replacing             :
+:                            : `%MACRO_NAME` with whatever expression it was   :
+:                            : associated with. Note in particular that the    :
+:                            : result of evaluated references are not cached.  :

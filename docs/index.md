@@ -390,7 +390,7 @@ unlocked using the `gin.unlock_config()` context manager.) Gin also allows
 inspection and validation (and potentially a final modification) of the config
 through "finalize hooks", which run when `gin.finalize` is called.
 
-## Gin "aliases" {#aliases}
+## Gin "macros" {#macros}
 
 Sometimes a value should be shared among multiple bindings. To facilitate this
 and avoid duplicating the value multiple times (leading to maintenance burdens),
@@ -398,43 +398,43 @@ Gin provides the following predefined configurable function:
 
 ```python
 @gin.configurable
-def alias(value):
+def macro(value):
   return value
 ```
 
-The alias can be "set" by binding a value to the `value` argument (within a
-scope acting as the alias's name). The "alias" function can then be referenced
+The macro can be "set" by binding a value to the `value` argument (within a
+scope acting as the macro's name). The "macro" function can then be referenced
 (with evaluation via "()") to retrieve the value. For example:
 
-    num_layers/alias.value = 10
-    network.num_layers = @num_layers/alias()
+    num_layers/macro.value = 10
+    network.num_layers = @num_layers/macro()
 
-Gin provides a simple syntactic sugar using `%` for aliases. The above can also
+Gin provides a simple syntactic sugar using `%` for macros. The above can also
 be written as:
 
     num_layers = 10
     network.num_layers = %num_layers
 
 In other words, bindings without an argument name specified (i.e. without `.`)
-are interpreted as aliases, and the alias can be referenced using `%` instead of
-`@` without needing to ever reference the `alias` function directly.
+are interpreted as macros, and the macro can be referenced using `%` instead of
+`@` without needing to ever reference the `macro` function directly.
 
-Additional error-checking of aliases (e.g., ensuring they are bound to a value)
+Additional error-checking of macros (e.g., ensuring they are bound to a value)
 can be done by calling `gin.finalize()` after all configuration files have been
 parsed. This runs a provided [finalize hook](#finalize-hook) that validates all
-aliases.
+macros.
 
-Note: When using an alias to refer to an evaluated configurable reference
-(`@some_scope/some_fun()`), _each reference to the alias implies a separate call
-to the underlying configurable being aliased_ (the behavior is as if each alias
-were textually replaced by whatever the alias's value is set to). If you need
+Note: When using a macro to refer to an evaluated configurable reference
+(`@some_scope/some_fun()`), _each reference to the macro implies a separate call
+to the underlying configurable_ (the behavior is as if each macro
+were textually replaced by whatever the macro's value is set to). If you need
 the same **instance** of an object to be shared among multiple bindings, see
 [singletons](#singletons) below.
 
 As with all other Gin bindings, the very last binding (across all parsed Gin
 files) that provides a value for a function's argument is used for _all_
 references to that function; i.e., the relative ordering between bindings to
-`alias` and references to `alias` doesn't matter; the last binding is always
+`macro` and references to `macro` doesn't matter; the last binding is always
 used.
 
 ### Singletons {#singletons}
@@ -453,7 +453,7 @@ In the above example, the scope ("shared_object_name") is used as an identifier
 for the singleton; the first time the `@shared_object_name/singleton()` is
 called, it will in turn call `callable` and cache the result. Subsequent calls
 to `@shared_object_name/singleton()` will reuse the cached value. This can be
-used with aliases:
+used with macros:
 
 ```
 SHARED_OBJECT = @shared_object_name/singleton()
@@ -466,7 +466,7 @@ another_function.shared_object = %SHARED_OBJECT
 ### Constants {#constants}
 
 The `gin.constant` function can be used to define constants that will be
-accessible through the alias syntax described above. For example, in Python:
+accessible through the macro syntax described above. For example, in Python:
 
     gin.constant('THE_ANSWER', 42)
 

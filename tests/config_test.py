@@ -33,7 +33,7 @@ from gin import config
 _EXPECTED_OPERATIVE_CONFIG_STR = """
 import gin.testdata.import_test_configurables
 
-# Aliases:
+# Macros:
 # ==============================================================================
 pen_names = ['Pablo Neruda', 'Voltaire', 'Snoop Lion']
 super/sweet = 'lugduname'
@@ -1055,16 +1055,16 @@ class ConfigTest(absltest.TestCase):
   def testIterateReferences(self):
     config_str = """
       configurable2.non_kwarg = [
-          {'so': @much/alias()},
-          (@nesting/alias(),)
+          {'so': @much/macro()},
+          (@nesting/macro(),)
       ]
       configurable2.kwarg1 = {
-          'nesting': {'like': ['a', (@pufferfish/alias(),)]}
+          'nesting': {'like': ['a', (@pufferfish/macro(),)]}
       }
     """
     config.parse_config(config_str)
-    aliases = list(config.iterate_references(config._CONFIG, to=config.alias))
-    self.assertLen(aliases, 3)
+    macros = list(config.iterate_references(config._CONFIG, to=config.macro))
+    self.assertLen(macros, 3)
 
   def testInteractiveMode(self):
     @config.configurable('duplicate_fn')
@@ -1144,12 +1144,12 @@ class ConfigTest(absltest.TestCase):
 
     config._FINALIZE_HOOKS = old_finalize_hooks
 
-  def testBasicAlias(self):
+  def testBasicMacro(self):
     config_str = """
-      batch_size/alias.value = 512
-      discriminator/num_layers/alias.value = 5
-      configurable2.non_kwarg = @batch_size/alias()
-      configurable2.kwarg1 = @discriminator/num_layers/alias()
+      batch_size/macro.value = 512
+      discriminator/num_layers/macro.value = 5
+      configurable2.non_kwarg = @batch_size/macro()
+      configurable2.kwarg1 = @discriminator/num_layers/macro()
     """
     config.parse_config(config_str)
     # pylint:disable=no-value-for-parameter
@@ -1158,7 +1158,7 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(batch_size, 512)
     self.assertEqual(num_layers, 5)
 
-  def testSpecialAliasSyntax(self):
+  def testSpecialMacroSyntax(self):
     config_str = """
       batch_size = 512
       discriminator/num_layers = 5
@@ -1172,10 +1172,10 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(batch_size, 512)
     self.assertEqual(num_layers, 5)
 
-  def testUncalledAliasAtFinalize(self):
+  def testUncalledMacroAtFinalize(self):
     config_str = """
-      batch_size/alias.value = 512
-      configurable2.non_kwarg = ([{'batch_size': @batch_size/alias}],)
+      batch_size/macro.value = 512
+      configurable2.non_kwarg = ([{'batch_size': @batch_size/macro}],)
     """
     config.parse_config(config_str)
     with self.assertRaises(ValueError):

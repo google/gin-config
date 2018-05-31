@@ -305,11 +305,10 @@ class ConfigurableReference(object):
     return not self.__eq__(other)
 
   def __repr__(self):
-    # Check if this reference is an evaluated alias or constant,
-    # i.e. @.../alias() or @.../constant(). Only evaluated aliases and constants
-    # correspond to the %... syntax.
+    # Check if this reference is a macro or constant, i.e. @.../macro() or
+    # @.../constant(). Only macros and constants correspond to the %... syntax.
     configurable_fn = self._configurable.fn_or_cls
-    if configurable_fn in (alias, _retrieve_constant) and self._evaluate:
+    if configurable_fn in (macro, _retrieve_constant) and self._evaluate:
       return '%' + '/'.join(self._scopes)
     maybe_parens = '()' if self._evaluate else ''
     return '@{}{}'.format(self._scoped_selector, maybe_parens)
@@ -391,7 +390,7 @@ def _should_skip(selector, skip_unknown):
 
 
 class ParserDelegate(config_parser.ParserDelegate):
-  """Delegate to handle creation of configurable references and aliases."""
+  """Delegate to handle creation of configurable references and macros."""
 
   def __init__(self, skip_unknown=False):
     self._skip_unknown = skip_unknown
@@ -402,7 +401,7 @@ class ParserDelegate(config_parser.ParserDelegate):
       return _UnknownConfigurableReference(scoped_selector, evaluate)
     return ConfigurableReference(scoped_selector, evaluate)
 
-  def alias(self, name):
+  def macro(self, name):
     matching_selectors = _CONSTANTS.matching_selectors(name)
     if matching_selectors:
       if len(matching_selectors) == 1:
@@ -410,7 +409,7 @@ class ParserDelegate(config_parser.ParserDelegate):
         return ConfigurableReference(name + '/gin.constant', True)
       err_str = "Ambiguous constant selector '{}', matches {}."
       raise ValueError(err_str.format(name, matching_selectors))
-    return ConfigurableReference(name + '/gin.alias', True)
+    return ConfigurableReference(name + '/gin.macro', True)
 
 
 class ParsedBindingKey(
@@ -1218,7 +1217,7 @@ def operative_config_str(max_line_length=80, continuation_indent=4):
     return '/'.join(parts)
 
   # Build the output as an array of formatted Gin statements. Each statement may
-  # span multiple lines. Imports are first, followed by aliases, and finally all
+  # span multiple lines. Imports are first, followed by macros, and finally all
   # other bindings sorted in alphabetical order by configurable name.
   formatted_statements = [
       'import {}'.format(module) for module in sorted(_IMPORTED_MODULES)
@@ -1226,17 +1225,17 @@ def operative_config_str(max_line_length=80, continuation_indent=4):
   if formatted_statements:
     formatted_statements.append('')
 
-  aliases = {}
+  macros = {}
   for (scope, selector), config in six.iteritems(_OPERATIVE_CONFIG):
-    if _REGISTRY[selector].fn_or_cls == alias:
-      aliases[scope, selector] = config
-  if aliases:
-    formatted_statements.append('# Aliases:')
+    if _REGISTRY[selector].fn_or_cls == macro:
+      macros[scope, selector] = config
+  if macros:
+    formatted_statements.append('# Macros:')
     formatted_statements.append('# ' + '=' * (max_line_length - 2))
-  for (name, _), config in sorted(aliases.items(), key=sort_key):
+  for (name, _), config in sorted(macros.items(), key=sort_key):
     binding = format_binding(name, config['value'])
     formatted_statements.append(binding)
-  if aliases:
+  if macros:
     formatted_statements.append('')
 
   sorted_items = sorted(_OPERATIVE_CONFIG.items(), key=sort_key)
@@ -1244,7 +1243,7 @@ def operative_config_str(max_line_length=80, continuation_indent=4):
     configurable_ = _REGISTRY[selector]
 
     fn = configurable_.fn_or_cls
-    if fn == alias or fn == _retrieve_constant:
+    if fn == macro or fn == _retrieve_constant:
       continue
 
     minimal_selector = _REGISTRY.minimal_selector(configurable_.selector)
@@ -1348,9 +1347,9 @@ def parse_config(bindings, skip_unknown=False):
     if isinstance(statement, config_parser.BindingStatement):
       scope, selector, arg_name, value, location = statement
       if not arg_name:
-        alias_name = '{}/{}'.format(scope, selector) if scope else selector
+        macro_name = '{}/{}'.format(scope, selector) if scope else selector
         with utils.try_with_location(location):
-          bind_parameter((alias_name, 'gin.alias', 'value'), value)
+          bind_parameter((macro_name, 'gin.macro', 'value'), value)
         continue
       if not _should_skip(selector, skip_unknown):
         with utils.try_with_location(location):
@@ -1623,8 +1622,8 @@ def validate_reference(ref, require_bindings=True, require_evaluation=False):
 
 
 @configurable(module='gin')
-def alias(value):
-  """A Gin alias."""
+def macro(value):
+  """A Gin macro."""
   return value
 
 
@@ -1655,7 +1654,7 @@ def constant(name, value):
   """Creates a constant that can be referenced from Gin config files.
 
   After calling this function in Python, the constant can be referenced from
-  within a Gin config file using the alias syntax. For example, in Python:
+  within a Gin config file using the macro syntax. For example, in Python:
 
       gin.constant('THE_ANSWER', 42)
 
@@ -1675,7 +1674,7 @@ def constant(name, value):
 
   Args:
     name: The name of the constant, possibly prepended by one or more
-      disambiguating module components separated by periods. An alias with this
+      disambiguating module components separated by periods. An macro with this
       name (including the modules) will be created.
     value: The value of the constant. This can be anything (including objects
       not representable as Gin literals). The value will be stored and returned
@@ -1719,13 +1718,14 @@ def constants_from_enum(cls):
 
 
 @register_finalize_hook
-def validate_aliases_hook(config):
-  for ref in iterate_references(config, to=alias):
+def validate_macros_hook(config):
+  for ref in iterate_references(config, to=macro):
     validate_reference(ref, require_evaluation=True)
 
 
 @register_finalize_hook
 def find_unknown_references_hook(config):
+  """Hook to find/raise errors for references to unknown configurables."""
   additional_msg_fmt = " In binding for '{}'."
   for (scope, selector), param_bindings in six.iteritems(config):
     for param_name, param_value in six.iteritems(param_bindings):

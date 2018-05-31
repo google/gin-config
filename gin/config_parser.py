@@ -61,14 +61,14 @@ class ParserDelegate(object):
     pass
 
   @abc.abstractmethod
-  def alias(self, alias_name):
-    """Called to construct an object representing an alias.
+  def macro(self, macro_name):
+    """Called to construct an object representing an macro.
 
     Args:
-      alias_name: The name of the alias, including all scopes.
+      macro_name: The name of the macro, including all scopes.
 
     Returns:
-      Should return an object representing the alias.
+      Should return an object representing the macro.
     """
     pass
 
@@ -149,7 +149,7 @@ class ConfigParser(object):
         supporting the readline method.
       parser_delegate: An instance of the ParserDelegate class, that will be
         responsible for constructing appropriate objects for configurable
-        references and aliases.
+        references and macros.
     """
     if hasattr(string_or_filelike, 'readline'):
       line_reader = string_or_filelike.readline
@@ -228,7 +228,7 @@ class ConfigParser(object):
     """
     parsers = [
         self._maybe_parse_container, self._maybe_parse_basic_type,
-        self._maybe_parse_configurable_reference, self._maybe_parse_alias
+        self._maybe_parse_configurable_reference, self._maybe_parse_macro
     ]
     for parser in parsers:
       success, value = parser()
@@ -417,8 +417,8 @@ class ConfigParser(object):
 
     return True, reference
 
-  def _maybe_parse_alias(self):
-    """Try to parse an alias (%scope/name)."""
+  def _maybe_parse_macro(self):
+    """Try to parse an macro (%scope/name)."""
     if self._current_token.value != '%':
       return False, None
 
@@ -427,9 +427,9 @@ class ConfigParser(object):
     scoped_name = self._parse_selector(allow_periods_in_scope=True)
 
     with utils.try_with_location(location):
-      alias = self._delegate.alias(scoped_name)
+      macro = self._delegate.macro(scoped_name)
 
-    return True, alias
+    return True, macro
 
 
 def parse_scoped_selector(scoped_selector):

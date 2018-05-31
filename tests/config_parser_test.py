@@ -79,7 +79,7 @@ class _TestConfigurableReference(
   pass
 
 
-class _TestAlias(collections.namedtuple('_TestAlias', ['name'])):
+class _TestMacro(collections.namedtuple('_TestMacro', ['name'])):
   pass
 
 
@@ -93,10 +93,10 @@ class _TestParserDelegate(config_parser.ParserDelegate):
       raise ValueError('Unknown configurable.')
     return _TestConfigurableReference(scoped_name, evaluate)
 
-  def alias(self, scoped_name):
+  def macro(self, scoped_name):
     if self._raise_error:
-      raise ValueError('Bad alias.')
-    return _TestAlias(scoped_name)
+      raise ValueError('Bad macro.')
+    return _TestMacro(scoped_name)
 
 
 class ConfigParserTest(absltest.TestCase):
@@ -161,7 +161,7 @@ class ConfigParserTest(absltest.TestCase):
                     r"malformed (string|node or string: <_ast.Name [^\n]+>)\n"
                     r"    Failed to parse token 'Garbage' \(line 3\)")
 
-  def testUnknownConfigurableAndAlias(self):
+  def testUnknownConfigurableAndMacro(self):
     with six.assertRaisesRegex(self, ValueError, 'line 2\n.*@raise_an_error'):
       self._parse_config(
           '\n'.join([
@@ -281,13 +281,13 @@ class ConfigParserTest(absltest.TestCase):
     self.assertEqual(value[0].name, 'ref1')
     self.assertFalse(value[0].evaluate)
 
-  def testAliases(self):
+  def testMacros(self):
     value = self._parse_value('%pele')
-    self.assertIsInstance(value, _TestAlias)
+    self.assertIsInstance(value, _TestMacro)
     self.assertEqual(value.name, 'pele')
 
     value = self._parse_value('%one.two.three')
-    self.assertIsInstance(value, _TestAlias)
+    self.assertIsInstance(value, _TestMacro)
     self.assertEqual(value.name, 'one.two.three')
 
     # Commit all kinds of atrocities with whitespace here.
@@ -299,10 +299,10 @@ class ConfigParserTest(absltest.TestCase):
 'Eric Blair':            %george_orwell})
     ]"""
     expected_result = [
-        _TestAlias('ronaldinho'), (_TestAlias('robert/galbraith'), {
-            'Samuel Clemens': _TestAlias('mark/twain'),
-            'Charles Dodgson': _TestAlias('lewis/carroll'),
-            'Eric Blair': _TestAlias('george_orwell')
+        _TestMacro('ronaldinho'), (_TestMacro('robert/galbraith'), {
+            'Samuel Clemens': _TestMacro('mark/twain'),
+            'Charles Dodgson': _TestMacro('lewis/carroll'),
+            'Eric Blair': _TestMacro('george_orwell')
         })
     ]
     value = self._parse_value(value_str)
@@ -310,7 +310,7 @@ class ConfigParserTest(absltest.TestCase):
 
     # But it doesn't do anything foul to newlines.
     still_an_error = """function.arg =
-%alias"""
+%macro"""
     with self.assertRaises(SyntaxError):
       self._parse_config(still_an_error)
 
@@ -318,14 +318,14 @@ class ConfigParserTest(absltest.TestCase):
     config = self._parse_config("""
       a = 0
       a1.B2.c = 1
-      scope/name = %alias
-      scope/fn.param = %a.b  # Periods in aliases are OK (e.g. for constants).
+      scope/name = %macro
+      scope/fn.param = %a.b  # Periods in macros are OK (e.g. for constants).
       a/scope/fn.param = 4
     """)
     self.assertEqual(config['', 'a'], {'': 0})
     self.assertEqual(config['', 'a1.B2'], {'c': 1})
-    self.assertEqual(config['scope', 'name'], {'': _TestAlias('alias')})
-    self.assertEqual(config['scope', 'fn'], {'param': _TestAlias('a.b')})
+    self.assertEqual(config['scope', 'name'], {'': _TestMacro('macro')})
+    self.assertEqual(config['scope', 'fn'], {'param': _TestMacro('a.b')})
     self.assertEqual(config['a/scope', 'fn'], {'param': 4})
 
     with self.assertRaises(SyntaxError):
