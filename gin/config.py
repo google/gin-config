@@ -671,10 +671,16 @@ def _validate_parameters(fn_or_cls, arg_name_list, err_prefix):
 
 
 def _get_cached_arg_spec(fn):
+  """Gets cached argspec for `fn`."""
+
   arg_spec = _ARG_SPEC_CACHE.get(fn)
   if arg_spec is None:
     arg_spec_fn = inspect.getfullargspec if six.PY3 else inspect.getargspec
-    arg_spec = arg_spec_fn(fn)
+    try:
+      arg_spec = arg_spec_fn(fn)
+    except TypeError:
+      # `fn` might be a callable object.
+      arg_spec = arg_spec_fn(fn.__call__)
     _ARG_SPEC_CACHE[fn] = arg_spec
   return arg_spec
 
