@@ -331,35 +331,62 @@ non-control-flow Python syntax, including literal values and line
 continuations). Note that where function and class names are used, these may
 include a dotted module name prefix (`some.module.function_name`).
 
-| Syntax                     | Description                                     |
-| -------------------------- | ----------------------------------------------- |
-| `@gin.configurable`        | Decorator in Python code that registers a       |
-:                            : function with Gin, automatically making its     :
-:                            : parameters "configurable".                      :
-| `name.param = value`       | Basic syntax of a Gin "binding". Once this is   |
-:                            : parsed, when the function or class named `name` :
-:                            : is called, it will receive `value` as the value :
-:                            : for `parameter`, unless a value is explicitly   :
-:                            : supplied by the caller. Any Python literal may  :
-:                            : be supplied as `value`.                         :
-| `@some_name`               | A *reference* to another function or class      |
-:                            : named `some_name`. This may be given as the     :
-:                            : value of a binding, to supply function- or      :
-:                            : class-value parameters.                         :
-| `@some_name()`             | An *evaluated reference*. Instead of supplying  |
-:                            : the function or class directly, the result of   :
-:                            : calling `some_name` is passed instead. Note     :
-:                            : that the result is not cached; it is recomputed :
-:                            : each time it is required.                       :
-| `scope/name.param = value` | A scoped binding. The binding is only active    |
-:                            : when `name` is called within scope `scope`.     :
-| `@scope/some_name`         | A scoped reference. When this is called, the    |
-:                            : call will be within scope `scope`, applying an  :
-:                            : relevant scoped bindings.                       :
-| `MACRO_NAME = value`       | A macro. This provides a shorthand name for the |
-:                            : expression on the right hand side.              :
-| `%MACRO_NAME`              | A reference to the macro `MACRO_NAME`. This has |
-:                            : the effect of "textually" replacing             :
-:                            : `%MACRO_NAME` with whatever expression it was   :
-:                            : associated with. Note in particular that the    :
-:                            : result of evaluated references are not cached.  :
+<table>
+  <thead>
+    <tr>
+      <th>Syntax</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+
+  <tbody>
+    <tr>
+      <td><code>@gin.configurable</code></td>
+      <td>Decorator in Python code that registers a function with Gin,
+      automatically making its parameters "configurable".</td>
+    </tr>
+    <tr>
+      <td><code>name.param&nbsp;=&nbsp;value</code></td>
+      <td>Basic syntax of a Gin "binding". Once this is parsed, when the
+      function or class named <code>name</code> is called, it will receive
+      <code>value</code> as the value for <code>parameter</code>, unless a
+      value is explicitly supplied by the caller. Any Python literal may be
+      supplied as <code>value</code>.</td>
+    </tr>
+    <tr>
+      <td><code>@some_name</code></td>
+      <td>A <em>reference</em> to another function or class named
+      <code>some_name</code>. This may be given as the value of a binding, to
+      supply function- or class-valued parameters.</td>
+    </tr>
+    <tr>
+      <td><code>@some_name()</code></td>
+      <td>An <em>evaluated reference</em>. Instead of supplying the function
+      or class directly, the result of calling <code>some_name</code> is
+      passed instead. Note that the result is not cached; it is recomputed
+      each time it is required.</td>
+    </tr>
+    <tr>
+      <td><code>scope/name.param&nbsp;=&nbsp;value</code></td>
+      <td>A scoped binding. The binding is only active when <code>name</code>
+      is called within scope <code>scope</code>.</td>
+    </tr>
+    <tr>
+      <td><code>@scope/some_name</code></td>
+      <td>A scoped reference. When this is called, the call will be within
+      scope <code>scope</code>, applying any relevant scoped bindings.</td>
+    </tr>
+    <tr>
+      <td><code>MACRO_NAME&nbsp;=&nbsp;value</code></td>
+      <td>A macro. This provides a shorthand name for the expression on the
+      right hand side.</td>
+    </tr>
+    <tr>
+      <td><code>%MACRO_NAME</code></td>
+      <td>A reference to the macro <code>MACRO_NAME</code>. This has the
+      effect of "textually" replacing <code>%MACRO_NAME</code> with whatever
+      expression it was associated with. Note in particular that the result
+      of evaluated references are not cached.</td>
+    </tr>
+  </tbody>
+</table>
