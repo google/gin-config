@@ -162,6 +162,7 @@ To use evaluated references, all of the referenced function or class's
 parameters must be provided via Gin. The call to the function or constructor
 takes place *just before* the call to the function to which the result is
 passed, In the above example, this would be just before `build_model` is called.
+
 The result is not cached, so a new `DNN` instance will be constructed for each
 call to `build_model`.
 
@@ -229,7 +230,7 @@ def optimize_loss(loss, optimizer_cls, learning_rate):
   return optimizer.minimize(loss)
 
 @gin.configurable
-def input_fn(file_patter, batch_size, ...):
+def input_fn(file_pattern, batch_size, ...):
   ...
 
 @gin.configurable
@@ -278,7 +279,7 @@ Additional features described in more detail in the [user guide] include:
 
 -   Automatic logging of all configured parameter values (the ["operative
     config"][operative config]), including [TensorBoard integration].
--   ["Macros"][macros], essentially macross, to specify a value used in multiple
+-   ["Macros"][macros], to specify a value used in multiple
     places within a config, as well as Python-defined constants.
 -   [Module imports][imports] and [config file inclusion][includes].
 -   [Disambiguation][modules] of configurable names via modules.
@@ -293,12 +294,12 @@ Additional features described in more detail in the [user guide] include:
 ## Best practices
 
 At a high level, we recommend using the minimal feature set required to achieve
-your project's desired degree of "configurability". Many projects may only
+your project's desired degree of configurability. Many projects may only
 require the features outlined in sections 2 or 3 above. Extreme configurability
 comes at some cost to understandability, and the tradeoff should be carefully
 evaluated for a given project.
 
-Gin is still in "alpha" development and some "corner-case" behaviors may be
+Gin is still in alpha development and some corner-case behaviors may be
 changed in backwards-incompatible ways. We recommend the following best
 practices:
 
@@ -317,10 +318,10 @@ practices:
 -   In fact, to aid readability for complex config files, we gently suggest
     always including module names to help make it easier to find corresponding
     definitions in Python code.
--   When doing "full hierarchical configuration" (section 4 above), prefer
-    structure code to minimize the number of "top-level" functions that are
+-   When doing "full hierarchical configuration" (section 4 above), structure
+    the code to minimize the number of "top-level" functions that are
     configured without themselves being passed as parameters. In other words,
-    the "configuration tree" should have only one root.
+    the configuration tree should have only one root.
 
 In short, use Gin responsibly :)
 
@@ -343,11 +344,11 @@ include a dotted module name prefix (`some.module.function_name`).
     <tr>
       <td><code>@gin.configurable</code></td>
       <td>Decorator in Python code that registers a function with Gin,
-      automatically making its parameters "configurable".</td>
+      automatically making its parameters configurable.</td>
     </tr>
     <tr>
       <td><code>name.param&nbsp;=&nbsp;value</code></td>
-      <td>Basic syntax of a Gin "binding". Once this is parsed, when the
+      <td>Basic syntax of a Gin binding. Once this is parsed, when the
       function or class named <code>name</code> is called, it will receive
       <code>value</code> as the value for <code>parameter</code>, unless a
       value is explicitly supplied by the caller. Any Python literal may be
@@ -384,7 +385,7 @@ include a dotted module name prefix (`some.module.function_name`).
     <tr>
       <td><code>%MACRO_NAME</code></td>
       <td>A reference to the macro <code>MACRO_NAME</code>. This has the
-      effect of "textually" replacing <code>%MACRO_NAME</code> with whatever
+      effect of textually replacing <code>%MACRO_NAME</code> with whatever
       expression it was associated with. Note in particular that the result
       of evaluated references are not cached.</td>
     </tr>

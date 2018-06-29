@@ -48,11 +48,14 @@ The `@gin.configurable` decorator does three things:
     parameter settings (for parameters not already supplied by the function's
     caller).
 
-To determine which parameters should be configurable, `@gin.configurable` takes
-a `whitelist` or a `blacklist` parameter. For instance, in the example above,
-configuring the `images` parameter doesn't make much sense, so it would be best
-to blacklist that parameter. Additionally, we might want a different name for
-the configurable object than "my_network":
+To determine which parameters are configurable, `@gin.configurable` takes
+a `whitelist` or a `blacklist` parameter. If some parameters are whitelisted
+the others would be blacklisted and viceversa. For instance, in the example
+above, whitelisting `num_layers` and `weight_decay` would imply that `images`
+and `num_outputs` are blacklisted.
+Since configuring the `images` parameter doesn't make much sense, it would
+be best to blacklist that parameter. Additionally, we might want a different
+name for the configurable object than "my_network":
 
 ```python
 @gin.configurable('supernet', blacklist=['images'])
@@ -99,15 +102,15 @@ behave as in Python. Arithmetic expressions are not supported.
 Once `gin.parse_config` has been called, any supplied bindings will be used in
 all future calls to configurable functions or classes. In cases where a
 parameter is both given as a binding and explicitly supplied by a configurable
-function's caller, the caller's value will win. In particular, note that this
-means that when multiple classes in a class hierarchy are made configurable, Gin
-bindings applied to a base class's parameters will generally be ignored when
-constructing a subclass if the subclass passes these parameters to the base
-class's constructor.
+function's caller, the caller's value will take precedence. In particular, note
+that this means that when multiple classes in a class hierarchy are made
+configurable, Gin bindings applied to a base class's parameters will generally
+be ignored when constructing a subclass if the subclass passes these parameters
+to the base class's constructor.
 
 When calling a configurable you may want to explicitly indicate that a specific
-parameter MUST be provided through Gin. To do so you can mark any arg or kwarg
-as `REQUIRED` when calling the function:
+parameter __must__ be provided through Gin. To do so you can mark any arg or
+kwarg as `REQUIRED` when calling the function:
 
     my_network(images, gin.REQUIRED, num_layers=5, weight_decay=gin.REQUIRED)
 
@@ -118,9 +121,12 @@ missing parameter bindings along with the configurable name that requires them.
 ### Querying bound parameters
 
 Configurable parameters can be queried using `gin.query_parameter`. The query
-syntax is identical to the one used by `gin.bind_parameter` above. Note that a
+syntax is similar to the one used by `gin.bind_parameter` above. Note that a
 `ValueError` exception will be raised if there is no value bound to the
 parameter being queried.
+
+    num_layers = gin.query_parameter('supernet.num_layers')
+    weight_decay = gin.query_parameter('supernet.weight_decay')
 
 ### Configurable references {#config-ref}
 
@@ -161,14 +167,39 @@ configurable object (the `MomentumOptimizer` class) is passed to `train_model`'s
 `optimizer` parameter. The `train_model` function will then be responsible for
 calling the object.
 
-Note: Evaluated configurable references (those ending in `()`) will be called
-*every time* their result is required as the value of another configurable
-parameter. In the above example, a new instance of `DNN` will be created for
-every call to `train_model`. To cache the result of evaluating a configurable
-reference (e.g., to share an instance of a class among multiple bindings), see
-[singletons](#singletons).
+**Note:** Evaluated configurable references (those ending in `()`) will be
+called *every time* their result is required as the value of another
+configurable parameter. In the above example, a new instance of `DNN` will be
+created for every call to `train_model`. To cache the result of evaluating a
+configurable reference (e.g., to share an instance of a class among multiple
+bindings), see [singletons](#singletons).
 
-### Handling naming collisions with modules {#modules}
+## Making existing classes or functions configurable
+
+Existing classes or functions that can't be explicitly annotated (maybe they're
+in another project) can be made configurable via the `gin.external_configurable`
+function. For example:
+
+```python
+gin.external_configurable(tf.train.MomentumOptimizer)
+```
+
+registers TensorFlow's `MomentumOptimizer` class with Gin, making it possible to
+reference it from configuration files and specify its parameters (as in the
+above example).
+
+Gin provides a [`tf.external_configurables` module](#tf-configurables) that can
+be imported to register a
+[default set](https://github.com/google/gin-config/tree/master/gin//tf/external_configurables.py)
+of TensorFlow optimizers, losses, and learning rate decays with Gin.
+
+(Note that `gin.external_configurable` does not modify the existing class or
+function, so only calls resulting from references to the configurable name in
+configuration strings, or calls to the return value of
+`gin.external_configurable`, will have parameter bindings applied. Direct calls
+will remain unaffected.)
+
+## Handling naming collisions with modules {#modules}
 
 If two configurable functions or classes with the same name are marked
 `@configurable`, it isn't possible to bind parameters to them using only their
@@ -214,30 +245,6 @@ following ways:
 
     gin.external_configurable(tf.nn.relu, module='tf.nn')
     gin.external_configurable(tf.nn.relu, 'tf.nn.relu')
-
-## Making existing classes or functions configurable
-
-Existing classes or functions that can't be explicitly annotated (maybe they're
-in another project) can be made configurable via the `gin.external_configurable`
-function. For example:
-
-```python
-gin.external_configurable(tf.train.MomentumOptimizer)
-```
-
-registers TensorFlow's `MomentumOptimizer` class with Gin, making it possible to
-reference it from configuration files and specify its parameters (as in the
-above example).
-
-Gin provides a [`tf.external_configurables` module](#tf-configurables) that can
-be imported to register a default set of TensorFlow optimizers, losses, and
-learning rate decays with Gin.
-
-(Note that `gin.external_configurable` does not modify the existing class or
-function, so only calls resulting from references to the configurable name in
-configuration strings, or calls to the return value of
-`gin.external_configurable`, will have parameter bindings applied. Direct calls
-will remain unaffected.)
 
 ## Scoping
 
@@ -327,6 +334,9 @@ Scopes can be nested (to arbitrary depth), and parameters bound at higher levels
 are inherited by lower levels, so e.g. parameters bound in a hypothetical
 `eval/train_data` scope would override those bound in `eval` (which override
 bindings in the root scope).
+
+While nesting of scopes is supported there is some ongoing debate around their
+ordering and behavior, so try to avoid relying on the ordering.
 
 ### Explicit scopes
 
