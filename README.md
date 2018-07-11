@@ -33,10 +33,18 @@ be found in the [user guide].
 ### 1. Setup
 
 
-Install Gin:
+Install Gin with pip:
 
 ```shell
 pip install gin-config
+```
+
+Install Gin from source:
+
+```shell
+git clone https://github.com/google/gin-config
+cd gin-config
+python -m setup.py install
 ```
 
 Import Gin (without TensorFlow functionality):
