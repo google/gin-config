@@ -13,6 +13,7 @@ TensorFlow), which tend to have many parameters, often nested in complex ways.
 
 
 **Authors**: Dan Holtmann-Rice, Sergio Guadarrama, Nathan Silberman
+**Contributors**: Oscar Ramirez, Marek Fiser
 
 <!---->
 
