@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """Init file for Gin."""
-__version__ = '0.1.1'
+__version__ = '0.1.1.1'
 
 from gin.config import bind_parameter
 from gin.config import clear_config
