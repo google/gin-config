@@ -23,9 +23,11 @@ https://github.com/google/gin-config
 
 import codecs
 from os import path
-import gin
+import sys
 from setuptools import find_packages
 from setuptools import setup
+
+_VERSION = '0.1.1.2'
 
 here = path.abspath(path.dirname(__file__))
 
@@ -33,12 +35,15 @@ here = path.abspath(path.dirname(__file__))
 with codecs.open(path.join(here, 'README.md'), encoding='utf-8') as f:
   long_description = f.read()
 
-install_requires = ['six >= 1.10.0', 'enum34;python_version<"3.4"']
+install_requires = ['six >= 1.10.0']
 test_requirements = ['six >= 1.10.0', 'absl-py >= 0.1.6']
+
+if sys.version_info < (3, 4):
+  install_requires.append('enum34 >= 1.1.6')
 
 setup(
     name='gin-config',
-    version=gin.__version__,
+    version=_VERSION,
     include_package_data=True,
     packages=find_packages(exclude=['docs']),  # Required
     package_data={'testdata': ['testdata/*.gin']},
