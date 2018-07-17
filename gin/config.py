@@ -1405,7 +1405,7 @@ def register_file_reader(*args):
     registration using the supplied readability predicate.
   """
   def do_registration(file_reader_fn, is_readable_fn):
-    if file_reader_fn not in zip(*_FILE_READERS)[0]:
+    if file_reader_fn not in list(zip(*_FILE_READERS))[0]:
       _FILE_READERS.append((file_reader_fn, is_readable_fn))
 
   if len(args) == 1:  # It's a decorator.
