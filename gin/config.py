@@ -628,7 +628,7 @@ def query_parameter(binding_key):
     raise ValueError(err_str.format(pbk.given_selector))
   if pbk.arg_name not in _CONFIG[pbk.config_key]:
     err_str = "Configurable '{}' has no value bound for parameter '{}'."
-    raise ValueError(err_str.format(pbk.selector, pbk.arg_name))
+    raise ValueError(err_str.format(pbk.given_selector, pbk.arg_name))
   return _CONFIG[pbk.config_key][pbk.arg_name]
 
 
