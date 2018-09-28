@@ -104,13 +104,16 @@ class GinConfigSaverHook(tf.train.SessionRunHook):
 
     return '\n'.join(output_lines)
 
-  def after_create_session(self, session, coord=None):
+  def after_create_session(self, session=None, coord=None):
     """Writes out Gin's operative config, and maybe adds a summary of it."""
     config_str = config.operative_config_str()
     if not tf.gfile.IsDirectory(self._output_dir):
       tf.gfile.MakeDirs(self._output_dir)
-    global_step = tf.train.get_global_step()
-    global_step_val = session.run(global_step) if global_step is not None else 0
+    global_step_val = 0
+    if session is not None:
+      global_step = tf.train.get_global_step()
+      if global_step is not None:
+        global_step_val = session.run(global_step)
     filename = '%s-%s.gin' % (self._base_name, global_step_val)
     config_path = os.path.join(self._output_dir, filename)
     with tf.gfile.FastGFile(config_path, 'w') as f:
