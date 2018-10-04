@@ -184,7 +184,8 @@ class GinConfigSaverHookTest(tf.test.TestCase):
     summary = summary_writer.summaries[global_step_value][0]
     self.assertEqual(summary.value[0].tag, 'gin/custom_name')
 
-    summary_lines = summary.value[0].tensor.string_val[0].splitlines()
+    summary_lines = (
+        summary.value[0].tensor.string_val[0].decode('utf8').splitlines())
     markdown = GinConfigSaverHookTest.EXPECTED_MARKDOWN
     markdown_lines = markdown.strip().splitlines()
     self.assertEqual(len(summary_lines), len(markdown_lines))

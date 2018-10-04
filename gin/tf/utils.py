@@ -123,7 +123,7 @@ class GinConfigSaverHook(tf.train.SessionRunHook):
       md_config_str = self._markdownify_operative_config_str(config_str)
       summary_metadata = summary_pb2.SummaryMetadata()
       summary_metadata.plugin_data.plugin_name = text_summary.PLUGIN_NAME
-      summary_metadata.plugin_data.content = '{}'
+      summary_metadata.plugin_data.content = b'{}'
       text_tensor = tf.make_tensor_proto(md_config_str)
       summary = summary_pb2.Summary()
       summary.value.add(
