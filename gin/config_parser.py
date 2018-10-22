@@ -159,7 +159,13 @@ class ConfigParser(object):
       string_io = io.StringIO(string_or_filelike)
       line_reader = string_io.readline
 
-    self._token_generator = tokenize.generate_tokens(line_reader)
+    def _text_line_reader():
+      line = line_reader()
+      if isinstance(line, bytes):
+        line = line.decode('utf8')
+      return line
+
+    self._token_generator = tokenize.generate_tokens(_text_line_reader)
     self._filename = getattr(string_or_filelike, 'name', None)
     self._current_token = None
     self._delegate = parser_delegate
