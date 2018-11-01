@@ -23,8 +23,7 @@ import os
 
 import tensorflow as tf
 
-from tensorflow.core.framework import summary_pb2
-from tensorflow.python.summary import text_summary
+from tensorboard.summary import v1 as tb_summary_v1
 
 from gin import config
 
@@ -121,15 +120,10 @@ class GinConfigSaverHook(tf.train.SessionRunHook):
 
     if self._summarize_config:
       md_config_str = self._markdownify_operative_config_str(config_str)
-      summary_metadata = summary_pb2.SummaryMetadata()
-      summary_metadata.plugin_data.plugin_name = text_summary.PLUGIN_NAME
-      summary_metadata.plugin_data.content = b'{}'
-      text_tensor = tf.make_tensor_proto(md_config_str)
-      summary = summary_pb2.Summary()
-      summary.value.add(
-          tag='gin/' + self._base_name,
-          tensor=text_tensor,
-          metadata=summary_metadata)
+      tag = 'gin/' + self._base_name
+      summary = tb_summary_v1.text_pb(tag, md_config_str)
+      # TODO: remove this when original tag gets preserved.
+      summary.value[0].tag = tag
       if not self._summary_writer:
         # Creating the FileWriter also creates the events file, so it should be
         # done here (where it is most likely to only occur on chief workers), as
