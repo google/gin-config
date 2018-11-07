@@ -115,12 +115,6 @@ parameters:
 DNN.layer_sizes = (1024, 512, 128)
 ```
 
-Finally, after defining or importing all configurable classes or functions, parse your config file to bind your configurations:
-
-```python
-gin.parse_config_file('config.gin')
-```
-
 Note that no other changes are required to the Python code, beyond adding the
 `gin.configurable` decorator and a call to one of Gin's parsing functions.
 
