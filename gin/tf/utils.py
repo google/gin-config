@@ -80,7 +80,7 @@ class GinConfigSaverHook(tf.train.SessionRunHook):
   def _markdownify_operative_config_str(self, string):
     """Convert an operative config string to markdown format."""
 
-    # TODO(b/37527917): Total hack below. Implement more principled formatting.
+    # TODO: Total hack below. Implement more principled formatting.
     def process(line):
       """Convert a single line to markdown format."""
       if not line.startswith('#'):
