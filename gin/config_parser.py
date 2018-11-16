@@ -139,7 +139,10 @@ class ConfigParser(object):
   _TOKEN_FIELDS = ['kind', 'value', 'begin', 'end', 'line']
 
   class Token(collections.namedtuple('Token', _TOKEN_FIELDS)):
-    pass
+
+    @property
+    def line_number(self):
+      return self.begin[0]
 
   def __init__(self, string_or_filelike, parser_delegate):
     """Construct the parser.
@@ -176,6 +179,10 @@ class ConfigParser(object):
 
   def __next__(self):
     return self.next()
+
+  @property
+  def current_token(self):
+    return self._current_token
 
   def next(self):
     statement = self.parse_statement()
@@ -248,6 +255,13 @@ class ConfigParser(object):
     # characters. Find the first non-space or non-ERRORTOKEN token.
     while (self._current_token.kind == tokenize.ERRORTOKEN and
            self._current_token.value in ' \t'):
+      self._current_token = ConfigParser.Token(*next(self._token_generator))
+
+  def advance_one_line(self):
+    """Advances to next line."""
+
+    current_line = self._current_token.line_number
+    while current_line == self._current_token.line_number:
       self._current_token = ConfigParser.Token(*next(self._token_generator))
 
   def _skip_whitespace_and_comments(self):
