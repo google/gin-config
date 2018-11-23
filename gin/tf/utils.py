@@ -23,9 +23,8 @@ import os
 
 import tensorflow as tf
 
-from tensorflow.core.framework import summary_pb2
-
 from gin import config
+from tensorflow.core.framework import summary_pb2
 
 
 # Register TF file reader for Gin's parse_config_file.
