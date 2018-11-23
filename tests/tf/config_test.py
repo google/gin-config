@@ -40,8 +40,10 @@ class TFConfigTest(tf.test.TestCase):
 
       self.assertIn(assert_raises.exception.message,
                     str(assert_raises.exception))
+      # Note that in Python3 (but not Python2) the function name will be in
+      # the exception message, which is caught with the '\S*'.
       self.assertRegexpMatches(
-          str(assert_raises.exception), r"'config_name' \(<function broken")
+          str(assert_raises.exception), r"'config_name' \(<function \S*broken")
       self.assertEqual(assert_raises.exception.op.name, 'strided_slice')
 
 
