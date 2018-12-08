@@ -92,6 +92,18 @@ config.external_configurable(tf.nn.softplus, 'tf.nn.softplus')
 config.external_configurable(tf.nn.softsign, 'tf.nn.softsign')
 config.external_configurable(tf.nn.tanh, 'tf.nn.tanh')
 
+
+# Random distributions.
+
+config.external_configurable(tf.random.gamma, 'tf.random.gamma')
+config.external_configurable(tf.random.categorical, 'tf.random.categorical')
+config.external_configurable(tf.random.normal, 'tf.random.normal')
+config.external_configurable(tf.random.poisson, 'tf.random.poisson')
+config.external_configurable(tf.random.truncated_normal,
+                             'tf.random.truncated_normal')
+config.external_configurable(tf.random.uniform, 'tf.random.uniform')
+
+
 # Constants
 
 config.constant('tf.float16', tf.float16)
