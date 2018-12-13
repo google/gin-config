@@ -1306,6 +1306,27 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(SomeEnum.A, a)
     self.assertEqual(SomeEnum.B, b)
 
+  def testConstantsFromEnumWithModule(self):
+
+    class SomeOtherEnum(enum.Enum):
+      A = 0,
+      B = 1
+
+    @config.configurable
+    def g(a, b):
+      return a, b
+
+    config.constants_from_enum(SomeOtherEnum, module='TestModule')
+    config.parse_config("""
+      g.a = %TestModule.SomeOtherEnum.A
+      g.b = %SomeOtherEnum.B
+    """)
+    # pylint: disable=no-value-for-parameter
+    a, b = g()
+    # pylint: enable=no-value-for-parameter
+    self.assertEqual(SomeOtherEnum.A, a)
+    self.assertEqual(SomeOtherEnum.B, b)
+
   def testConstantsFromEnumNotEnum(self):
     expected_msg = "Class 'FakeEnum' is not subclass of enum."
     with six.assertRaisesRegex(self, TypeError, expected_msg):

@@ -1700,7 +1700,7 @@ def constant(name, value):
   _CONSTANTS[name] = value
 
 
-def constants_from_enum(cls):
+def constants_from_enum(cls, module=None):
   """Decorator for an enum class that generates Gin constants from values.
 
   Generated constants have format `module.ClassName.ENUM_VALUE`. The module
@@ -1708,6 +1708,8 @@ def constants_from_enum(cls):
 
   Args:
     cls: Class type.
+    module: The module to associate with the constants, to help handle naming
+      collisions. If `None`, `cls.__module__` will be used.
 
   Returns:
     Class type (identity function).
@@ -1718,8 +1720,10 @@ def constants_from_enum(cls):
   if not issubclass(cls, enum.Enum):
     raise TypeError("Class '{}' is not subclass of enum.".format(cls.__name__))
 
+  if module is None:
+    module = cls.__module__
   for value in cls:
-    constant('{}.{}'.format(cls.__module__, str(value)), value)
+    constant('{}.{}'.format(module, str(value)), value)
   return cls
 
 
