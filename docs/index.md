@@ -603,25 +603,25 @@ In the binary file, one can define the following flags:
     from absl import flags
 
     flags.DEFINE_multi_string(
-      'gin_config', None, 'List of paths to the config files.')
+      'gin_file', None, 'List of paths to the config files.')
     flags.DEFINE_multi_string(
-      'gin_binding', None, 'Newline separated list of Gin parameter bindings.')
+      'gin_param', None, 'Newline separated list of Gin parameter bindings.')
 
     FLAGS = flags.FLAGS
 
 and then use Gin to parse them:
 
-    gin.parse_config_files_and_bindings(FLAGS.gin_config, FLAGS.gin_binding)
+    gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
 
 Finally the binary file can be run as:
 
     .../run_gin_eval \
-      --gin_config=$CONFIGS_PATH/cartpole_balance.gin \
-      --gin_config=$CONFIGS_PATH/base_dqn.gin \
-      --gin_config=$CONFIGS_PATH/eval.gin \
-      --gin_binding='evaluate.num_episodes_eval = 10' \
-      --gin_binding='evaluate.generate_videos = False' \
-      --gin_binding='evaluate.eval_interval_secs = 60'
+      --gin_file=$CONFIGS_PATH/cartpole_balance.gin \
+      --gin_file=$CONFIGS_PATH/base_dqn.gin \
+      --gin_file=$CONFIGS_PATH/eval.gin \
+      --gin_param='evaluate.num_episodes_eval = 10' \
+      --gin_param='evaluate.generate_videos = False' \
+      --gin_param='evaluate.eval_interval_secs = 60'
 
 ## Gin's `gin.tf` package: TensorFlow specific functionality
 
