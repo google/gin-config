@@ -56,7 +56,6 @@ setup(
     long_description=long_description,
     url='https://github.com/google/gin-config',  # Optional
     author='The Gin-Config Team',  # Optional
-    author_email='opensource@google.com',
     classifiers=[  # Optional
         'Development Status :: 3 - Alpha',
 
