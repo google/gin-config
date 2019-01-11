@@ -114,7 +114,7 @@ class GinConfigSaverHook(tf.train.SessionRunHook):
         global_step_val = session.run(global_step)
     filename = '%s-%s.gin' % (self._base_name, global_step_val)
     config_path = os.path.join(self._output_dir, filename)
-    with tf.gfile.FastGFile(config_path, 'w') as f:
+    with tf.gfile.GFile(config_path, 'w') as f:
       f.write(config_str)
 
     if self._summarize_config:
