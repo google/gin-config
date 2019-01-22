@@ -1695,7 +1695,7 @@ def constant(name, value):
 
   if _CONSTANTS.matching_selectors(name):
     err_str = "Constants matching selector '{}' already exist ({})."
-    raise ValueError(err_str.format(name))
+    raise ValueError(err_str.format(name, _CONSTANTS.matching_selectors(name)))
 
   _CONSTANTS[name] = value
 
