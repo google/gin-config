@@ -453,6 +453,13 @@ class ConfigParser(object):
 
 
 def parse_scoped_selector(scoped_selector):
+  """Parse scoped selector."""
+  # Conver Macro (%scope/name) to (scope/name/macro.value)
+  if scoped_selector[0] == '%':
+    if scoped_selector.endswith('.value'):
+      err_str = '{} is invalid cannot use % and end with .value'
+      raise ValueError(err_str.format(scoped_selector))
+    scoped_selector = scoped_selector[1:] + '/macro.value'
   scope_selector_list = scoped_selector.rsplit('/', 1)
   scope = ''.join(scope_selector_list[:-1])
   selector = scope_selector_list[-1]
