@@ -1158,6 +1158,22 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(batch_size, 512)
     self.assertEqual(num_layers, 5)
 
+  def testOverwriteBasicMacro(self):
+    config_str = """
+      batch_size/macro.value = 512
+      discriminator/num_layers/macro.value = 5
+      configurable2.non_kwarg = @batch_size/macro()
+      configurable2.kwarg1 = @discriminator/num_layers/macro()
+    """
+    config.parse_config(config_str)
+    config.bind_parameter('batch_size/macro.value', 256)
+    config.bind_parameter('discriminator/num_layers/macro.value', 10)
+    # pylint:disable=no-value-for-parameter
+    batch_size, num_layers = configurable2()
+    # pylint:enable=no-value-for-parameter
+    self.assertEqual(batch_size, 256)
+    self.assertEqual(num_layers, 10)
+
   def testSpecialMacroSyntax(self):
     config_str = """
       batch_size = 512
@@ -1171,6 +1187,22 @@ class ConfigTest(absltest.TestCase):
     # pylint:enable=no-value-for-parameter
     self.assertEqual(batch_size, 512)
     self.assertEqual(num_layers, 5)
+
+  def testOverwriteSpecialMacroSyntax(self):
+    config_str = """
+      batch_size = 512
+      discriminator/num_layers = 5
+      configurable2.non_kwarg = %batch_size
+      configurable2.kwarg1 = %discriminator/num_layers
+    """
+    config.parse_config(config_str)
+    config.bind_parameter('%batch_size', 256)
+    config.bind_parameter('%discriminator/num_layers', 10)
+    # pylint:disable=no-value-for-parameter
+    batch_size, num_layers = configurable2()
+    # pylint:enable=no-value-for-parameter
+    self.assertEqual(batch_size, 256)
+    self.assertEqual(num_layers, 10)
 
   def testUncalledMacroAtFinalize(self):
     config_str = """
