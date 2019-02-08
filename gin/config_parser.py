@@ -26,10 +26,10 @@ import io
 import re
 import tokenize
 
-import six
-
 from gin import selector_map
 from gin import utils
+
+import six
 
 # A regular expression matching a valid module identifier. A valid module
 # identifier consists of one or more valid identifiers (see below), separated by

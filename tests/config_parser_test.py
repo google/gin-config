@@ -24,9 +24,9 @@ import random
 
 from absl.testing import absltest
 
-import six
-
 from gin import config_parser
+
+import six
 
 
 def _generate_nested_value(max_depth=4, max_container_size=5):
@@ -255,7 +255,7 @@ class ConfigParserTest(absltest.TestCase):
 
     # Test a list of configurable references.
     value = self._parse_value('[@ref1, @scoped/ref2, @ref3]')
-    self.assertEqual(len(value), 3)
+    self.assertLen(value, 3)
     self.assertEqual(value[0].name, 'ref1')
     self.assertFalse(value[0].evaluate)
     self.assertEqual(value[1].name, 'scoped/ref2')
@@ -265,7 +265,7 @@ class ConfigParserTest(absltest.TestCase):
 
     # Test mix of configurable references with output references.
     value = self._parse_value('[@ref1(), @scoped/ref2(), @ref3]')
-    self.assertEqual(len(value), 3)
+    self.assertLen(value, 3)
     self.assertEqual(value[0].name, 'ref1')
     self.assertTrue(value[0].evaluate)
     self.assertEqual(value[1].name, 'scoped/ref2')
@@ -277,7 +277,7 @@ class ConfigParserTest(absltest.TestCase):
       @ref1
     ]"""
     value = self._parse_value(multiline)
-    self.assertEqual(len(value), 1)
+    self.assertLen(value, 1)
     self.assertEqual(value[0].name, 'ref1')
     self.assertFalse(value[0].evaluate)
 

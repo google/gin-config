@@ -17,13 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from gin import config
+from gin.tf import external_configurables  # pylint: disable=unused-import
 
-# pylint: disable=unused-import
-from gin.tf import external_configurables
-# pylint: enable=unused-import
+import tensorflow as tf
 
 # Necessary for AdagradaDAOptimizer test.
 config.external_configurable(tf.train.get_global_step)
@@ -46,6 +43,7 @@ class TFConfigTest(tf.test.TestCase):
 
   def tearDown(self):
     config.clear_config()
+    super(TFConfigTest, self).tearDown()
 
   def testConfigureOptimizerAndLearningRate(self):
     config_str = """

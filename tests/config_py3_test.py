@@ -13,8 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#! python3. This invalid shebang is just here to disable the linter, which isn't
-# yet compatible with Python 3.
+# python3
 
 from __future__ import absolute_import
 from __future__ import division
@@ -34,6 +33,7 @@ class ConfigTest(absltest.TestCase):
 
   def tearDown(self):
     config.clear_config()
+    super(ConfigTest, self).tearDown()
 
   def testKwOnlyArgs(self):
     config_str = """

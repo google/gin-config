@@ -96,11 +96,11 @@ import pprint
 
 import enum
 
-import six
-
 from gin import config_parser
 from gin import selector_map
 from gin import utils
+
+import six
 
 
 # Maintains the registry of configurable functions and classes.
@@ -1657,7 +1657,7 @@ def singleton_value(key, constructor=None):
 
 
 def constant(name, value):
-  """Creates a constant that can be referenced from Gin config files.
+  """Creates a constant that can be referenced from gin config files.
 
   After calling this function in Python, the constant can be referenced from
   within a Gin config file using the macro syntax. For example, in Python:

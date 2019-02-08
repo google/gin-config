@@ -29,6 +29,7 @@ def augment_exception_message_and_reraise(exception, message):
   """Reraises `exception`, appending `message` to its string representation."""
 
   class ExceptionProxy(type(exception)):
+    """Acts as a proxy for an exception with an augmented message."""
     __module__ = type(exception).__module__
 
     def __init__(self):

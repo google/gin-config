@@ -17,15 +17,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import gin.tf
 
-import gin
+import tensorflow as tf
 
 
 class TFConfigPy3Test(tf.test.TestCase):
 
   def tearDown(self):
     gin.clear_config()
+    super(TFConfigPy3Test, self).tearDown()
 
   def testAugmentExceptionMessageOnTFError(self):
     @gin.configurable('config_name')

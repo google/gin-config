@@ -22,11 +22,11 @@ from __future__ import print_function
 import os
 import tempfile
 
-from six.moves import zip
-import tensorflow as tf
-
 from gin import config
 from gin.tf import utils
+
+from six.moves import zip
+import tensorflow as tf
 
 
 @config.configurable

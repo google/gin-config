@@ -54,7 +54,7 @@ Import Gin (without TensorFlow functionality):
 import gin
 ```
 
-Import Gin (with TensorFlow functionality):
+Import additional TensorFlow-specific functionality via the TF module:
 
 ```python
 import gin.tf
