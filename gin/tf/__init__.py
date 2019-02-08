@@ -16,4 +16,5 @@
 """Init file for TensorFlow-specific Gin package."""
 
 
+# pylint: disable=unused-import
 from gin.tf.utils import GinConfigSaverHook

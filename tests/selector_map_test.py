@@ -55,10 +55,10 @@ class SelectorMapTest(absltest.TestCase):
     sm['specific.selector'] = 2
     self.assertEqual(sm.get_match('specific.selector'), 2)
     self.assertEqual(sm.get_match('more.specific.selector'), 1)
-    self.assertItemsEqual(sm.get_all_matches('selector'), [1, 2])
+    self.assertCountEqual(sm.get_all_matches('selector'), [1, 2])
     # Because 'specific.selector' exactly matches an existing selector, it isn't
     # ambiguous and `get_all_matches` only returns one value.
-    self.assertItemsEqual(sm.get_all_matches('specific.selector'), [2])
+    self.assertCountEqual(sm.get_all_matches('specific.selector'), [2])
 
     # Try in the reverse order.
     sm = selector_map.SelectorMap()
@@ -66,7 +66,7 @@ class SelectorMapTest(absltest.TestCase):
     sm['more.specific.selector'] = 1
     self.assertEqual(sm.get_match('more.specific.selector'), 1)
     self.assertEqual(sm.get_match('specific.selector'), 2)
-    self.assertItemsEqual(sm.get_all_matches('selector'), [1, 2])
+    self.assertCountEqual(sm.get_all_matches('selector'), [1, 2])
 
     self.assertEqual(
         sm.minimal_selector('specific.selector'), 'specific.selector')

@@ -21,10 +21,13 @@ from __future__ import print_function
 
 import os
 
+from gin import config
+
 import tensorflow as tf
 
-from gin import config
+# pylint: disable=g-direct-tensorflow-import
 from tensorflow.core.framework import summary_pb2
+# pylint: enable=g-direct-tensorflow-import
 
 
 # Register TF file reader for Gin's parse_config_file.

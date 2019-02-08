@@ -25,9 +25,8 @@ import io
 from absl.testing import absltest
 
 import enum
-import six
-
 from gin import config
+import six
 
 
 _EXPECTED_OPERATIVE_CONFIG_STR = """
@@ -277,6 +276,7 @@ class ConfigTest(absltest.TestCase):
 
   def tearDown(self):
     config.clear_config()
+    super(ConfigTest, self).tearDown()
 
   def testConfigurable(self):
     config.bind_parameter('configurable1.kwarg1', 'value1')
@@ -740,7 +740,7 @@ class ConfigTest(absltest.TestCase):
 
     @config.configurable('broken_function')
     def borked_fn(arg):  # pylint: disable=unused-variable
-      some_fn(**{'nonexistent_arg': arg})
+      some_fn(nonexistent_arg=arg)  # pylint: disable=unexpected-keyword-arg
 
     config.parse_config([
         'configurable2.non_kwarg = @broken_function()',

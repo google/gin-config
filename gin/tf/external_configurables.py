@@ -21,10 +21,10 @@ from __future__ import print_function
 
 import functools
 
+from gin import config
+
 import numpy as np
 import tensorflow as tf
-
-from gin import config
 
 
 # Learning rate decays.
