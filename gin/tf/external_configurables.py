@@ -29,53 +29,67 @@ import tensorflow as tf
 
 # Learning rate decays.
 
-config.external_configurable(tf.train.exponential_decay, module='tf.train')
-config.external_configurable(tf.train.inverse_time_decay, module='tf.train')
-config.external_configurable(tf.train.natural_exp_decay, module='tf.train')
-config.external_configurable(tf.train.polynomial_decay, module='tf.train')
+config.external_configurable(
+    tf.compat.v1.train.exponential_decay, module='tf.train')
+config.external_configurable(
+    tf.compat.v1.train.inverse_time_decay, module='tf.train')
+config.external_configurable(
+    tf.compat.v1.train.natural_exp_decay, module='tf.train')
+config.external_configurable(
+    tf.compat.v1.train.polynomial_decay, module='tf.train')
 
 
 @config.configurable(module='tf.train')
-@functools.wraps(tf.train.piecewise_constant)
+@functools.wraps(tf.compat.v1.train.piecewise_constant)
 def piecewise_constant(global_step, *args, **kwargs):
   if 'boundaries' in kwargs:
     kwargs['boundaries'] = list(np.int64(kwargs['boundaries']))
-  return tf.train.piecewise_constant(global_step, *args, **kwargs)
+  return tf.compat.v1.train.piecewise_constant(global_step, *args, **kwargs)
 
 
 # Losses.
 
-config.external_configurable(tf.losses.absolute_difference, module='tf.losses')
-config.external_configurable(tf.losses.cosine_distance, module='tf.losses')
-config.external_configurable(tf.losses.hinge_loss, module='tf.losses')
-config.external_configurable(tf.losses.huber_loss, module='tf.losses')
-config.external_configurable(tf.losses.log_loss, module='tf.losses')
 config.external_configurable(
-    tf.losses.mean_pairwise_squared_error, module='tf.losses')
-config.external_configurable(tf.losses.mean_squared_error, module='tf.losses')
+    tf.compat.v1.losses.absolute_difference, module='tf.losses')
 config.external_configurable(
-    tf.losses.sigmoid_cross_entropy, module='tf.losses')
+    tf.compat.v1.losses.cosine_distance, module='tf.losses')
+config.external_configurable(tf.compat.v1.losses.hinge_loss, module='tf.losses')
+config.external_configurable(tf.compat.v1.losses.huber_loss, module='tf.losses')
+config.external_configurable(tf.compat.v1.losses.log_loss, module='tf.losses')
 config.external_configurable(
-    tf.losses.softmax_cross_entropy, module='tf.losses')
+    tf.compat.v1.losses.mean_pairwise_squared_error, module='tf.losses')
 config.external_configurable(
-    tf.losses.sparse_softmax_cross_entropy, module='tf.losses')
+    tf.compat.v1.losses.mean_squared_error, module='tf.losses')
+config.external_configurable(
+    tf.compat.v1.losses.sigmoid_cross_entropy, module='tf.losses')
+config.external_configurable(
+    tf.compat.v1.losses.softmax_cross_entropy, module='tf.losses')
+config.external_configurable(
+    tf.compat.v1.losses.sparse_softmax_cross_entropy, module='tf.losses')
 
 
 # Optimizers.
 
 config.external_configurable(
-    tf.train.GradientDescentOptimizer, module='tf.train')
-config.external_configurable(tf.train.AdadeltaOptimizer, module='tf.train')
-config.external_configurable(tf.train.AdagradOptimizer, module='tf.train')
-config.external_configurable(tf.train.AdagradDAOptimizer, module='tf.train')
-config.external_configurable(tf.train.MomentumOptimizer, module='tf.train')
-config.external_configurable(tf.train.AdamOptimizer, module='tf.train')
-config.external_configurable(tf.train.FtrlOptimizer, module='tf.train')
+    tf.compat.v1.train.GradientDescentOptimizer, module='tf.train')
 config.external_configurable(
-    tf.train.ProximalGradientDescentOptimizer, module='tf.train')
+    tf.compat.v1.train.AdadeltaOptimizer, module='tf.train')
 config.external_configurable(
-    tf.train.ProximalAdagradOptimizer, module='tf.train')
-config.external_configurable(tf.train.RMSPropOptimizer, module='tf.train')
+    tf.compat.v1.train.AdagradOptimizer, module='tf.train')
+config.external_configurable(
+    tf.compat.v1.train.AdagradDAOptimizer, module='tf.train')
+config.external_configurable(
+    tf.compat.v1.train.MomentumOptimizer, module='tf.train')
+config.external_configurable(
+    tf.compat.v1.train.AdamOptimizer, module='tf.train')
+config.external_configurable(
+    tf.compat.v1.train.FtrlOptimizer, module='tf.train')
+config.external_configurable(
+    tf.compat.v1.train.ProximalGradientDescentOptimizer, module='tf.train')
+config.external_configurable(
+    tf.compat.v1.train.ProximalAdagradOptimizer, module='tf.train')
+config.external_configurable(
+    tf.compat.v1.train.RMSPropOptimizer, module='tf.train')
 
 
 # Activation functions.
