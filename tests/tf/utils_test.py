@@ -85,7 +85,7 @@ class GinConfigSaverHookTest(tf.test.TestCase):
   """
 
   def setUp(self):
-    tf.reset_default_graph()
+    tf.compat.v1.reset_default_graph()
     config.clear_config()
 
   def run_log_config_hook_maybe_with_summary(self, global_step_value, **kwargs):
@@ -96,18 +96,18 @@ class GinConfigSaverHookTest(tf.test.TestCase):
     no_args_fn()
 
     if global_step_value is not None:
-      tf.get_variable(
+      tf.compat.v1.get_variable(
           'global_step',
           shape=(),
           dtype=tf.int64,
-          initializer=tf.constant_initializer(global_step_value),
+          initializer=tf.compat.v1.initializers.constant(global_step_value),
           trainable=False)
 
     output_dir = tempfile.mkdtemp()
     summary_writer = tf.contrib.testing.FakeSummaryWriter(output_dir)
     h = utils.GinConfigSaverHook(
         output_dir, summary_writer=summary_writer, **kwargs)
-    with tf.train.MonitoredSession(hooks=[h]):
+    with tf.compat.v1.train.MonitoredSession(hooks=[h]):
       pass
 
     return output_dir, summary_writer
@@ -152,7 +152,7 @@ class GinConfigSaverHookTest(tf.test.TestCase):
     self.assertEqual(os.listdir(output_dir), [])
 
     def create_event_files(hook):
-      with tf.train.MonitoredTrainingSession(chief_only_hooks=[hook]):
+      with tf.compat.v1.train.MonitoredTrainingSession(chief_only_hooks=[hook]):
         pass
       return [f for f in os.listdir(output_dir) if f.startswith('events')]
 
@@ -165,7 +165,7 @@ class GinConfigSaverHookTest(tf.test.TestCase):
     output_dir, summary_writer = self.run_log_config_hook_maybe_with_summary(
         global_step_value=global_step_value, summarize_config=False)
     expected_file_name = 'operative_config-%d.gin' % global_step_value
-    with tf.gfile.Open(os.path.join(output_dir, expected_file_name)) as f:
+    with tf.io.gfile.GFile(os.path.join(output_dir, expected_file_name)) as f:
       operative_config_str = f.read()
     self.assertEqual(operative_config_str, config.operative_config_str())
     summary_writer.assert_summaries(test_case=self, expected_logdir=output_dir)
@@ -177,7 +177,7 @@ class GinConfigSaverHookTest(tf.test.TestCase):
         global_step_value=global_step_value,
         base_name='custom_name')
     expected_file_name = 'custom_name-%d.gin' % global_step_value
-    with tf.gfile.Open(os.path.join(output_dir, expected_file_name)) as f:
+    with tf.io.gfile.GFile(os.path.join(output_dir, expected_file_name)) as f:
       operative_config_str = f.read()
     self.assertEqual(operative_config_str, config.operative_config_str())
     summary_writer.assert_summaries(test_case=self, expected_logdir=output_dir)
@@ -197,7 +197,7 @@ class GinConfigSaverHookTest(tf.test.TestCase):
     output_dir, summary_writer = self.run_log_config_hook_maybe_with_summary(
         global_step_value=None)
     expected_file_name = 'operative_config-0.gin'
-    with tf.gfile.Open(os.path.join(output_dir, expected_file_name)) as f:
+    with tf.io.gfile.GFile(os.path.join(output_dir, expected_file_name)) as f:
       operative_config_str = f.read()
     self.assertEqual(operative_config_str, config.operative_config_str())
     summary_writer.assert_summaries(test_case=self, expected_logdir=output_dir)

@@ -31,7 +31,7 @@ class TFConfigPy3Test(tf.test.TestCase):
   def testAugmentExceptionMessageOnTFError(self):
     @gin.configurable('config_name')
     def broken(sess):
-      index = tf.placeholder(tf.int32, name='index')
+      index = tf.compat.v1.placeholder(tf.int32, name='index')
       slice_op = tf.range(10)[index]
       sess.run(slice_op, feed_dict={index: 11})
 
