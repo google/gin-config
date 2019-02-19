@@ -579,7 +579,7 @@ When used in conjunction with TensorFlow, Gin provides
 [`gin.tf.GinConfigSaverHook`](#config-saver-hook) to automatically save this to
 a file (as well as summarize it to TensorBoard).
 
-## Experiments with multiple Gin files and extra command line bindings
+## Experiments with multiple Gin files and extra command line bindings {#multiple-files}
 
 In many cases one can define multiple Gin files that contain different parts of
 the overall configuration of an experiment. Additional "tweaks" to the overall
