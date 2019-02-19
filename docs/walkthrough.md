@@ -86,9 +86,9 @@ dnn.layer_sizes = (1024, 512, 128)
 
 Bindings have syntax `function_name.parameter_name = value`. All Python literal
 values are supported as `value` (numbers, strings, lists, tuples, dicts). Once
-the config file has been parsed by Gin (`gin.parse_config_file`), any future
-calls to `dnn` will use the Gin-specified value for `layer_sizes` (unless a
-value is explicitly provided by the caller).
+the config file has been parsed by Gin, any future calls to `dnn` will use the
+Gin-specified value for `layer_sizes` (unless a value is explicitly provided by
+the caller).
 
 Classes can also be marked as configurable, in which case the configuration
 applies to constructor parameters:
@@ -115,8 +115,19 @@ parameters:
 DNN.layer_sizes = (1024, 512, 128)
 ```
 
+Finally, after defining or importing all configurable classes or functions,
+parse your config file to bind your configurations (to also permit multiple
+config files and command line overrides, see
+[`gin.parse_config_files_and_bindings`][multiple files]):
+
+```python
+gin.parse_config_file('config.gin')
+```
+
 Note that no other changes are required to the Python code, beyond adding the
 `gin.configurable` decorator and a call to one of Gin's parsing functions.
+
+[multiple files]: https://github.com/google/gin-config/tree/master/docs/index.md#multiple-files
 
 ### 3. Passing functions, classes, and instances ("configurable references")
 
