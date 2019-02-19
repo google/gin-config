@@ -127,7 +127,7 @@ gin.parse_config_file('config.gin')
 Note that no other changes are required to the Python code, beyond adding the
 `gin.configurable` decorator and a call to one of Gin's parsing functions.
 
-[multiple files]: https://github.com/google/gin-config/tree/master/docs/index.md#multiple-files
+[multiple files]: https://github.com/google/gin-config/tree/master/docs/index.md#experiments-with-multiple-gin-files-and-extra-command-line-bindings
 
 ### 3. Passing functions, classes, and instances ("configurable references")
 
@@ -304,12 +304,12 @@ Additional features described in more detail in the [user guide] include:
 -   [Module imports][imports] and [config file inclusion][includes].
 -   [Disambiguation][modules] of configurable names via modules.
 
-[operative config]: https://github.com/google/gin-config/tree/master/docs/index.md#operative-config
-[macros]: https://github.com/google/gin-config/tree/master/docs/index.md#macros
+[operative config]: https://github.com/google/gin-config/tree/master/docs/index.md#retrieving-operative-parameter-values
+[macros]: https://github.com/google/gin-config/tree/master/docs/index.md#gin-macros
 [imports]: https://github.com/google/gin-config/tree/master/docs/index.md#importing-modules-from-within-a-gin-file
 [includes]: https://github.com/google/gin-config/tree/master/docs/index.md#including-other-gin-files
-[TensorBoard integration]: https://github.com/google/gin-config/tree/master/docs/index.md#config-saver-hook
-[modules]: https://github.com/google/gin-config/tree/master/docs/index.md#modules
+[TensorBoard integration]: https://github.com/google/gin-config/tree/master/docs/index.md#saving-gins-operative-config-to-a-file-and-tensorboard
+[modules]: https://github.com/google/gin-config/tree/master/docs/index.md#handling-naming-collisions-with-modules
 
 ## Best practices
 

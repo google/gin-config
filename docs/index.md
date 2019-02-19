@@ -64,7 +64,7 @@ def my_network(images, num_outputs, num_layers=3, weight_decay=1e-4):
 ```
 
 In case of collisions, configurable names can be disambiguated by [specifying
-the module](#modules) of the intended configurable.
+the module](#handling-naming-collisions-with-modules) of the intended configurable.
 
 ## Binding parameters to values
 
@@ -89,7 +89,7 @@ of newline-separated statements of the form
     configurable_name.parameter_name = value
 
 Here `value` can be any valid Python literal value (lists, tuples, dicts,
-strings, etc., although note [configurable references](#config-ref) below). A
+strings, etc., although note [configurable references](#configurable-references) below). A
 valid configuration string for the above network might be:
 
     supernet.num_layers = 5
@@ -128,7 +128,7 @@ parameter being queried.
     num_layers = gin.query_parameter('supernet.num_layers')
     weight_decay = gin.query_parameter('supernet.weight_decay')
 
-### Configurable references {#config-ref}
+### Configurable references
 
 In addition to Python values, Gin recognizes any value starting with '`@`' (even
 when nested inside a container) as a reference to another configurable function
@@ -188,7 +188,7 @@ registers TensorFlow's `MomentumOptimizer` class with Gin, making it possible to
 reference it from configuration files and specify its parameters (as in the
 above example).
 
-Gin provides a [`tf.external_configurables` module](#tf-configurables) that can
+Gin provides a [`tf.external_configurables` module](#importing-the-predefined-set-of-tf-configurable-objects) that can
 be imported to register a
 [default set](https://github.com/google/gin-config/tree/master/gin//tf/external_configurables.py)
 of TensorFlow optimizers, losses, and learning rate decays with Gin.
@@ -199,7 +199,7 @@ configuration strings, or calls to the return value of
 `gin.external_configurable`, will have parameter bindings applied. Direct calls
 will remain unaffected.)
 
-## Handling naming collisions with modules {#modules}
+## Handling naming collisions with modules
 
 If two configurable functions or classes with the same name are marked
 `@configurable`, it isn't possible to bind parameters to them using only their
@@ -216,7 +216,7 @@ necessary to uniquely identify the configurable. For instance, if
 
 This syntax is supported wherever a configurable name can be supplied (so
 configurables can be disambiguated in a similar way when
-using [configurable references](#config-ref)).
+using [configurable references](#configurable-references)).
 
 Just as a configurable name can be customized relative to the underlying
 function's name, the module used to disambiguate a configurable can also be
@@ -391,7 +391,7 @@ The included file will be read and parsed prior to continuing with the current
 file (the one containing the include statement), as if the included file had
 been literally "pasted" at the location of the include statement.
 
-## Finalizing the config {#finalize-hook}
+## Finalizing the config
 
 Once all configuration has been finished (parsing of config files or calls to
 `gin.bind_parameter`), the config can be locked to prevent further modification
@@ -400,7 +400,7 @@ unlocked using the `gin.unlock_config()` context manager.) Gin also allows
 inspection and validation (and potentially a final modification) of the config
 through "finalize hooks", which run when `gin.finalize` is called.
 
-## Gin "macros" {#macros}
+## Gin "macros"
 
 Sometimes a value should be shared among multiple bindings. To facilitate this
 and avoid duplicating the value multiple times (leading to maintenance burdens),
@@ -431,7 +431,7 @@ are interpreted as macros, and the macro can be referenced using `%` instead of
 
 Additional error-checking of macros (e.g., ensuring they are bound to a value)
 can be done by calling `gin.finalize()` after all configuration files have been
-parsed. This runs a provided [finalize hook](#finalize-hook) that validates all
+parsed. This runs a provided [finalize hook](#finalizing-the-config) that validates all
 macros.
 
 Note: When using a macro to refer to an evaluated configurable reference
@@ -447,7 +447,7 @@ references to that function; i.e., the relative ordering between bindings to
 `macro` and references to `macro` doesn't matter; the last binding is always
 used.
 
-### Singletons {#singletons}
+### Singletons
 
 A single instance of an object can be shared among multiple bindings using the
 `singleton` configurable function. For example:
@@ -473,7 +473,7 @@ some_function.shared_object = %SHARED_OBJECT
 another_function.shared_object = %SHARED_OBJECT
 ```
 
-### Constants {#constants}
+### Constants
 
 The `gin.constant` function can be used to define constants that will be
 accessible through the macro syntax described above. For example, in Python:
@@ -527,7 +527,7 @@ my_function.x = %SomeEnum.A
 my_function.y = %my_code.SomeEnum.B
 ```
 
-## Retrieving "operative" parameter values {#operative-config}
+## Retrieving "operative" parameter values
 
 A binary may include many configurable functions (different network
 architectures, optimizers, etc.), but only a subset are generally called during
@@ -576,10 +576,10 @@ NetworkTrainer.train_steps = 1000000
 ```
 
 When used in conjunction with TensorFlow, Gin provides
-[`gin.tf.GinConfigSaverHook`](#config-saver-hook) to automatically save this to
+[`gin.tf.GinConfigSaverHook`](#saving-gins-operative-config-to-a-file-and-tensorboard) to automatically save this to
 a file (as well as summarize it to TensorBoard).
 
-## Experiments with multiple Gin files and extra command line bindings {#multiple-files}
+## Experiments with multiple Gin files and extra command line bindings
 
 In many cases one can define multiple Gin files that contain different parts of
 the overall configuration of an experiment. Additional "tweaks" to the overall
@@ -630,12 +630,12 @@ any Python program). However, Gin provides a `tf` package with additional
 TensorFlow specific functionality.
 
 
-### Importing the predefined set of TF configurable objects {#tf-configurables}
+### Importing the predefined set of TF configurable objects
 
 Since it is common to want to configure built in TF functions or class, Gin
 provides a module that can be imported to make all basic TF optimizers, learning
 rate decays, and losses configurable (using `gin.external_configurable`). These
-can then be referenced through [configurable references](#config-ref) in a Gin
+can then be referenced through [configurable references](#configurable-references) in a Gin
 config file. To import the module, add
 
 ```python
@@ -645,10 +645,10 @@ import gin.tf.external_configurables
 alongside any other modules being imported for their Gin-configurable functions
 (either from Python or within a Gin file).
 
-### Saving Gin's operative config to a file and TensorBoard {#config-saver-hook}
+### Saving Gin's operative config to a file and TensorBoard
 
 Gin provides `gin.tf.GinConfigSaverHook`: a `tf.train.SessionRunHook` that can
-save the [operative configuration](#operative-config) to a file, as well as
+save the [operative configuration](#retrieving-operative-parameter-values) to a file, as well as
 create a summary that will display the operative configuration in TensorBoard's
 "Text" tab. The resulting hook should be added to a `MonitoredSession`'s hooks.
 In distributed training mode, it should run only on the chief. For example:
