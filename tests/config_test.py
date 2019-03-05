@@ -1314,8 +1314,19 @@ class ConfigTest(absltest.TestCase):
     with self.assertRaises(ValueError):
       # Parameter not set.
       config.query_parameter('whitelisted_configurable.other')
-    with six.assertRaisesRegex(self, ValueError, 'Invalid type'):
+    with six.assertRaisesRegex(self, TypeError, 'expected string*'):
       config.query_parameter(4)
+
+  def testQueryConstant(self):
+    config.constant('Euler', 0.5772156649)
+    self.assertEqual(0.5772156649, config.query_parameter('Euler'))
+    config.constant('OLD.ANSWER', 0)
+    config.constant('NEW.ANSWER', 10)
+    with six.assertRaisesRegex(
+        self, ValueError, 'Ambiguous constant selector*'):
+      config.query_parameter('ANSWER')
+    self.assertEqual(0, config.query_parameter('OLD.ANSWER'))
+    self.assertEqual(10, config.query_parameter('NEW.ANSWER'))
 
   def testConstantsFromEnum(self):
 

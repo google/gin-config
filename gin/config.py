@@ -610,7 +610,7 @@ def query_parameter(binding_key):
   this will not include default parameters.
 
   Args:
-    binding_key: The parameter whose value should be set.
+    binding_key: The parameter whose value should be queried.
 
   Returns:
     The value bound to the configurable/parameter combination given in
@@ -622,6 +622,13 @@ def query_parameter(binding_key):
       blacklisted or not in the function's whitelist (if present) or if there is
       no value bound for the queried parameter or configurable.
   """
+  if config_parser.MODULE_RE.match(binding_key):
+    matching_selectors = _CONSTANTS.matching_selectors(binding_key)
+    if len(matching_selectors) == 1:
+      return _CONSTANTS[matching_selectors[0]]
+    elif len(matching_selectors) > 1:
+      err_str = "Ambiguous constant selector '{}', matches {}."
+      raise ValueError(err_str.format(binding_key, matching_selectors))
   pbk = ParsedBindingKey(binding_key)
   if pbk.config_key not in _CONFIG:
     err_str = "Configurable '{}' has no bound parameters."
