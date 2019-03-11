@@ -1181,33 +1181,21 @@ def external_configurable(fn_or_cls,
       subclass=True)
 
 
-def operative_config_str(max_line_length=80, continuation_indent=4):
-  """Retrieve the "operative" configuration as a config string.
-
-  The operative configuration consists of all parameter values used by
-  configurable functions that are actually called during execution of the
-  current program. Parameters associated with configurable functions that are
-  not called (and so can have no effect on program execution) won't be included.
-
-  The goal of the function is to return a config that captures the full set of
-  relevant configurable "hyperparameters" used by a program. As such, the
-  returned configuration will include the default values of arguments from
-  configurable functions (as long as the arguments aren't blacklisted or missing
-  from a supplied whitelist), as well as any parameter values overridden via
-  `bind_parameter` or through `parse_config`.
-
-  Any parameters that can't be represented as literals (capable of being parsed
-  by `parse_config`) are excluded. The resulting config string is sorted
-  lexicographically and grouped by configurable name.
+def _config_str(configuration_object,
+                max_line_length=80,
+                continuation_indent=4):
+  """Print the configuration specified in configuration object.
 
   Args:
+    configuration_object: Either OPERATIVE_CONFIG_ (operative config) or _CONFIG
+      (all config, bound and unbound).
     max_line_length: A (soft) constraint on the maximum length of a line in the
       formatted string. Large nested structures will be split across lines, but
       e.g. long strings won't be split into a concatenation of shorter strings.
     continuation_indent: The indentation for continued lines.
 
   Returns:
-    A config string capturing all parameter values used by the current program.
+    A config string capturing all parameter values set by the object.
   """
   def format_binding(key, value):
     """Pretty print the given key/value pair."""
@@ -1239,7 +1227,7 @@ def operative_config_str(max_line_length=80, continuation_indent=4):
     formatted_statements.append('')
 
   macros = {}
-  for (scope, selector), config in six.iteritems(_OPERATIVE_CONFIG):
+  for (scope, selector), config in six.iteritems(configuration_object):
     if _REGISTRY[selector].fn_or_cls == macro:
       macros[scope, selector] = config
   if macros:
@@ -1251,7 +1239,7 @@ def operative_config_str(max_line_length=80, continuation_indent=4):
   if macros:
     formatted_statements.append('')
 
-  sorted_items = sorted(_OPERATIVE_CONFIG.items(), key=sort_key)
+  sorted_items = sorted(configuration_object.items(), key=sort_key)
   for (scope, selector), config in sorted_items:
     configurable_ = _REGISTRY[selector]
 
@@ -1273,6 +1261,55 @@ def operative_config_str(max_line_length=80, continuation_indent=4):
     formatted_statements.append('')
 
   return '\n'.join(formatted_statements)
+
+
+def operative_config_str(max_line_length=80, continuation_indent=4):
+  """Retrieve the "operative" configuration as a config string.
+
+  The operative configuration consists of all parameter values used by
+  configurable functions that are actually called during execution of the
+  current program. Parameters associated with configurable functions that are
+  not called (and so can have no effect on program execution) won't be included.
+
+  The goal of the function is to return a config that captures the full set of
+  relevant configurable "hyperparameters" used by a program. As such, the
+  returned configuration will include the default values of arguments from
+  configurable functions (as long as the arguments aren't blacklisted or missing
+  from a supplied whitelist), as well as any parameter values overridden via
+  `bind_parameter` or through `parse_config`.
+
+  Any parameters that can't be represented as literals (capable of being parsed
+  by `parse_config`) are excluded. The resulting config string is sorted
+  lexicographically and grouped by configurable name.
+
+  Args:
+    max_line_length: A (soft) constraint on the maximum length of a line in the
+      formatted string. Large nested structures will be split across lines, but
+      e.g. long strings won't be split into a concatenation of shorter strings.
+    continuation_indent: The indentation for continued lines.
+
+  Returns:
+    A config string capturing all parameter values set in the current program.
+  """
+  return _config_str(_OPERATIVE_CONFIG, max_line_length, continuation_indent)
+
+
+def config_str(max_line_length=80, continuation_indent=4):
+  """Retrieve the interpreted configuration as a config string.
+
+  This is not the _operative configuration_, in that it includes parameter
+  values which are unused by by the program.
+
+  Args:
+    max_line_length: A (soft) constraint on the maximum length of a line in the
+      formatted string. Large nested structures will be split across lines, but
+      e.g. long strings won't be split into a concatenation of shorter strings.
+    continuation_indent: The indentation for continued lines.
+
+  Returns:
+    A config string capturing all parameter values used by the current program.
+  """
+  return _config_str(_CONFIG, max_line_length, continuation_indent)
 
 
 def parse_config(bindings, skip_unknown=False):

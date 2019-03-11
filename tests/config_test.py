@@ -86,6 +86,56 @@ var_arg_fn.non_kwarg2 = \\
               'line']}
 """
 
+_EXPECTED_CONFIG_STR = """
+import gin.testdata.import_test_configurables
+
+# Macros:
+# ==============================================================================
+pen_names = ['Pablo Neruda', 'Voltaire', 'Snoop Lion']
+super/sweet = 'lugduname'
+
+# Parameters for configurable1:
+# ==============================================================================
+configurable1.kwarg1 = \\
+    'a super duper extra double very wordy string that is just plain long'
+configurable1.kwarg3 = @configurable2
+
+# Parameters for configurable2:
+# ==============================================================================
+configurable2.non_kwarg = 'ferret == domesticated polecat'
+
+# Parameters for ConfigurableClass:
+# ==============================================================================
+ConfigurableClass.kwarg1 = 'statler'
+ConfigurableClass.kwarg2 = 'waldorf'
+
+# Parameters for test/scopes/ConfigurableClass:
+# ==============================================================================
+test/scopes/ConfigurableClass.kwarg2 = 'beaker'
+
+# Parameters for ConfigurableSubclass:
+# ==============================================================================
+ConfigurableSubclass.kwarg1 = 'waldorf'
+ConfigurableSubclass.kwarg3 = 'ferret'
+
+# Parameters for woolly.sheep.dolly:
+# ==============================================================================
+woolly.sheep.dolly.kwarg = 0
+
+# Parameters for var_arg_fn:
+# ==============================================================================
+var_arg_fn.any_name_is_ok = [%THE_ANSWER, %super/sweet, %pen_names]
+var_arg_fn.dict_value = {'success': True}
+var_arg_fn.float_value = 2.718
+var_arg_fn.non_kwarg2 = \\
+    {'long': ['nested',
+              'structure',
+              ('that', 'will', 'span'),
+              'more',
+              ('than', 1),
+              'line']}
+"""
+
 
 @config.configurable('configurable1')
 def fn1(non_kwarg, kwarg1=None, kwarg2=None, kwarg3=None):
@@ -275,7 +325,7 @@ config.external_configurable(ExternalAbstractConfigurableSubclass)
 class ConfigTest(absltest.TestCase):
 
   def tearDown(self):
-    config.clear_config()
+    config.clear_config(clear_constants=True)
     super(ConfigTest, self).tearDown()
 
   def testConfigurable(self):
@@ -804,6 +854,42 @@ class ConfigTest(absltest.TestCase):
     # See the definition of _EXPECTED_OPERATIVE_CONFIG_STR at top of file.
     expected_config_lines = _EXPECTED_OPERATIVE_CONFIG_STR.splitlines()
     self.assertEqual(applied_config_lines, expected_config_lines[1:])
+
+  def testConfigStr(self):
+    config_str = """
+      import gin.testdata.import_test_configurables
+
+      configurable1.kwarg1 = \\
+        'a super duper extra double very wordy string that is just plain long'
+      configurable1.kwarg3 = @configurable2
+      configurable2.non_kwarg = 'ferret == domesticated polecat'
+      ConfigurableClass.kwarg1 = 'statler'
+      ConfigurableClass.kwarg2 = 'waldorf'
+      ConfigurableSubclass.kwarg1 = 'waldorf'
+      ConfigurableSubclass.kwarg3 = 'ferret'
+      test/scopes/ConfigurableClass.kwarg2 = 'beaker'
+      var_arg_fn.non_kwarg2 = {
+        'long': [
+          'nested', 'structure', ('that', 'will', 'span'),
+          'more', ('than', 1), 'line',
+        ]
+      }
+      var_arg_fn.any_name_is_ok = [%THE_ANSWER, %super/sweet, %pen_names]
+      var_arg_fn.float_value = 2.718
+      var_arg_fn.dict_value = {'success': True}
+
+      super/sweet = 'lugduname'
+      pen_names = ['Pablo Neruda', 'Voltaire', 'Snoop Lion']
+      a.woolly.sheep.dolly.kwarg = 0
+    """
+    config.constant('THE_ANSWER', 42)
+    config.parse_config(config_str)
+    config.finalize()
+
+    config_lines = config.config_str().splitlines()
+    # See the definition of _EXPECTED_CONFIG_STR at top of file.
+    expected_config_lines = _EXPECTED_CONFIG_STR.splitlines()
+    self.assertEqual(config_lines, expected_config_lines[1:])
 
   def testOperativeConfigStrHandlesOverrides(self):
     config_str = """
