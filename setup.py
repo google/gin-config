@@ -27,7 +27,7 @@ import sys
 from setuptools import find_packages
 from setuptools import setup
 
-_VERSION = '0.1.4'
+_VERSION = '0.2.0'
 
 here = path.abspath(path.dirname(__file__))
 
@@ -36,10 +36,11 @@ with codecs.open(path.join(here, 'README.md'), encoding='utf-8') as f:
   long_description = f.read()
 
 install_requires = ['six >= 1.10.0']
-test_requirements = ['six >= 1.10.0',
-                     'absl-py >= 0.1.6',
-                     'pytest>=3.8.0',
-                     ]
+test_requirements = [
+    'six >= 1.10.0',
+    'absl-py >= 0.1.6',
+    'pytest >= 3.8.0',
+]
 
 if sys.version_info < (3, 4):
   install_requires.append('enum34 >= 1.1.6')
@@ -52,8 +53,8 @@ setup(
     package_data={'testdata': ['testdata/*.gin']},
     install_requires=install_requires,
     extras_require={  # Optional
-        'tensorflow': ['tensorflow>=1.12.0'],
-        'tensorflow_gpu': ['tensorflow-gpu>=1.12.0'],
+        'tensorflow': ['tensorflow >= 1.13.0'],
+        'tensorflow_gpu': ['tensorflow-gpu >= 1.13.0'],
     },
     tests_require=test_requirements,
     description='Gin-config: a lightweight configuration library for Python',
