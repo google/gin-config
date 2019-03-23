@@ -146,10 +146,9 @@ _FILE_READERS = [(open, os.path.isfile)]
 
 # Maintains a cache of argspecs for functions.
 _ARG_SPEC_CACHE = {}
-# Maintains a cache of argument defaults for functions.
-_ARG_DEFAULTS_CACHE = {}
 
-REQUIRED = '__gin_required__'
+# Value to represent required parameters.
+REQUIRED = object()
 
 
 def _find_class_construction_fn(cls):
@@ -163,8 +162,10 @@ def _find_class_construction_fn(cls):
 
 def _ensure_wrappability(fn):
   """Make sure `fn` can be wrapped cleanly by functools.wraps."""
-  # Handle "wrapped_descriptor" and "method-wrapper" types.
-  if isinstance(fn, (type(object.__init__), type(object.__call__))):
+  # Handle "builtin_function_or_method", "wrapped_descriptor", and
+  # "method-wrapper" types.
+  unwrappable_types = (type(sum), type(object.__init__), type(object.__call__))
+  if isinstance(fn, unwrappable_types):
     # pylint: disable=unnecessary-lambda
     wrappable_fn = lambda *args, **kwargs: fn(*args, **kwargs)
     wrappable_fn.__name__ = fn.__name__
@@ -437,7 +438,7 @@ class ParsedBindingKey(
     Args:
       binding_key: A spec identifying a parameter of a configurable (maybe in
         some scope). This should either be a string of the form
-        'maybe/some/scope/maybe.moduels.configurable_name.parameter_name'; or a
+        'maybe/some/scope/maybe.modules.configurable_name.parameter_name'; or a
         list or tuple of `(scope, selector, arg_name)`; or another instance of
         `ParsedBindingKey`.
 
@@ -606,7 +607,7 @@ def query_parameter(binding_key):
   """Returns the currently bound value to the specified `binding_key`.
 
   The `binding_key` argument should look like
-  'maybe/some/scope/maybe.moduels.configurable_name.parameter_name'. Note that
+  'maybe/some/scope/maybe.modules.configurable_name.parameter_name'. Note that
   this will not include default parameters.
 
   Args:
@@ -679,7 +680,6 @@ def _validate_parameters(fn_or_cls, arg_name_list, err_prefix):
 
 def _get_cached_arg_spec(fn):
   """Gets cached argspec for `fn`."""
-
   arg_spec = _ARG_SPEC_CACHE.get(fn)
   if arg_spec is None:
     arg_spec_fn = inspect.getfullargspec if six.PY3 else inspect.getargspec
@@ -708,6 +708,39 @@ def _get_all_positional_parameter_names(fn):
   return args
 
 
+def _get_kwarg_defaults(fn):
+  """Returns a dict mapping kwargs to default values for the given function."""
+  arg_spec = _get_cached_arg_spec(fn)
+  if arg_spec.defaults:
+    default_kwarg_names = arg_spec.args[-len(arg_spec.defaults):]
+    arg_vals = dict(zip(default_kwarg_names, arg_spec.defaults))
+  else:
+    arg_vals = {}
+
+  if six.PY3 and arg_spec.kwonlydefaults:
+    arg_vals.update(arg_spec.kwonlydefaults)
+
+  return arg_vals
+
+
+def _get_validated_required_kwargs(fn, fn_descriptor, whitelist, blacklist):
+  """Gets required argument names, and validates against white/blacklist."""
+  kwarg_defaults = _get_kwarg_defaults(fn)
+
+  required_kwargs = []
+  for kwarg, default in six.iteritems(kwarg_defaults):
+    if default is REQUIRED:
+      if blacklist and kwarg in blacklist:
+        err_str = "Argument '{}' of {} marked REQUIRED but blacklisted."
+        raise ValueError(err_str.format(kwarg, fn_descriptor))
+      if whitelist and kwarg not in whitelist:
+        err_str = "Argument '{}' of {} marked REQUIRED but not whitelisted."
+        raise ValueError(err_str.format(kwarg, fn_descriptor))
+      required_kwargs.append(kwarg)
+
+  return required_kwargs
+
+
 def _get_default_configurable_parameter_values(fn, whitelist, blacklist):
   """Retrieve all default values for configurable parameters of a function.
 
@@ -722,20 +755,7 @@ def _get_default_configurable_parameter_values(fn, whitelist, blacklist):
   Returns:
     A dictionary mapping configurable parameter names to their default values.
   """
-  arg_vals = _ARG_DEFAULTS_CACHE.get(fn)
-  if arg_vals is not None:
-    return arg_vals.copy()
-
-  # First, grab any default values not captured in the kwargs var.
-  arg_spec = _get_cached_arg_spec(fn)
-  if arg_spec.defaults:
-    default_kwarg_names = arg_spec.args[-len(arg_spec.defaults):]
-    arg_vals = dict(zip(default_kwarg_names, arg_spec.defaults))
-  else:
-    arg_vals = {}
-
-  if six.PY3 and arg_spec.kwonlydefaults:
-    arg_vals.update(arg_spec.kwonlydefaults)
+  arg_vals = _get_kwarg_defaults(fn)
 
   # Now, eliminate keywords that are blacklisted, or aren't whitelisted (if
   # there's a whitelist), or aren't representable as a literal value.
@@ -746,8 +766,19 @@ def _get_default_configurable_parameter_values(fn, whitelist, blacklist):
     if whitelist_fail or blacklist_fail or not representable:
       del arg_vals[k]
 
-  _ARG_DEFAULTS_CACHE[fn] = arg_vals
-  return arg_vals.copy()
+  return arg_vals
+
+
+def _order_by_signature(fn, arg_names):
+  """Orders given `arg_names` based on their order in the signature of `fn`."""
+  arg_spec = _get_cached_arg_spec(fn)
+  all_args = list(arg_spec.args)
+  if six.PY3 and arg_spec.kwonlyargs:
+    all_args.extend(arg_spec.kwonlyargs)
+  ordered = [arg for arg in all_args if arg in arg_names]
+  # Handle any leftovers corresponding to varkwargs in the order we got them.
+  ordered.extend([arg for arg in arg_names if arg not in ordered])
+  return ordered
 
 
 def current_scope():
@@ -910,11 +941,18 @@ def _make_configurable(fn_or_cls,
   _validate_parameters(fn_or_cls, whitelist, 'whitelist')
   _validate_parameters(fn_or_cls, blacklist, 'blacklist')
 
-  def apply_config(fn):
+  def decorator(fn):
     """Wraps `fn` so that it obtains parameters from the configuration."""
+    # At this point we have access to the final function to be wrapped, so we
+    # can cache a few things here.
+    fn_descriptor = "'{}' ('{}')".format(name, fn_or_cls)
+    signature_required_kwargs = _get_validated_required_kwargs(
+        fn, fn_descriptor, whitelist, blacklist)
+    initial_configurable_defaults = _get_default_configurable_parameter_values(
+        fn, whitelist, blacklist)
 
     @six.wraps(fn)
-    def wrapper(*args, **kwargs):
+    def gin_wrapper(*args, **kwargs):
       """Supplies fn with parameter values from the configuration."""
       scope_components = current_scope()
       new_kwargs = {}
@@ -941,10 +979,10 @@ def _make_configurable(fn_or_cls,
           required_arg_names.append(arg_names[i])
           required_arg_indexes.append(i)
 
-      required_kwargs = []
+      caller_required_kwargs = []
       for kwarg, value in six.iteritems(kwargs):
         if value is REQUIRED:
-          required_kwargs.append(kwarg)
+          caller_required_kwargs.append(kwarg)
 
       # If the caller passed arguments as positional arguments that correspond
       # to a keyword arg in new_kwargs, remove the keyword argument from
@@ -955,8 +993,7 @@ def _make_configurable(fn_or_cls,
           new_kwargs.pop(arg_name, None)
 
       # Get default values for configurable parameters.
-      operative_parameter_values = _get_default_configurable_parameter_values(
-          fn, whitelist, blacklist)
+      operative_parameter_values = initial_configurable_defaults.copy()
       # Update with the values supplied via configuration.
       operative_parameter_values.update(new_kwargs)
 
@@ -967,15 +1004,15 @@ def _make_configurable(fn_or_cls,
         if k not in required_arg_names:
           operative_parameter_values.pop(k, None)
       for k in kwargs:
-        if k not in required_kwargs:
+        if k not in caller_required_kwargs:
           operative_parameter_values.pop(k, None)
 
       # An update is performed in case another caller of this same configurable
       # object has supplied a different set of arguments. By doing an update, a
       # Gin-supplied or default value will be present if it was used (not
       # overridden by the caller) at least once.
-      _OPERATIVE_CONFIG.setdefault((scope_str, selector), {}).update(
-          operative_parameter_values)
+      op_cfg = _OPERATIVE_CONFIG.setdefault((scope_str, selector), {})
+      op_cfg.update(operative_parameter_values)
 
       # We call deepcopy for two reasons: First, to prevent the called function
       # from modifying any of the values in `_CONFIG` through references passed
@@ -995,14 +1032,21 @@ def _make_configurable(fn_or_cls,
           new_args[i] = new_kwargs.pop(arg_name)
 
       # Validate kwargs marked as REQUIRED have been bound in the Gin config.
-      for kwarg in required_kwargs:
-        if kwarg not in new_kwargs:
-          missing_required_params.append(kwarg)
+      for required_kwarg in signature_required_kwargs:
+        if (required_kwarg not in arg_names and  # not a positional arg
+            required_kwarg not in kwargs and  # or a keyword arg
+            required_kwarg not in new_kwargs):  # or bound in config
+          missing_required_params.append(required_kwarg)
+      for required_kwarg in caller_required_kwargs:
+        if required_kwarg not in new_kwargs:
+          missing_required_params.append(required_kwarg)
         else:
           # Remove from kwargs and let the new_kwargs value be used.
-          kwargs.pop(kwarg)
+          kwargs.pop(required_kwarg)
 
       if missing_required_params:
+        missing_required_params = (
+            _order_by_signature(fn, missing_required_params))
         err_str = 'Required bindings for `{}` not provided in config: {}'
         minimal_selector = _REGISTRY.minimal_selector(selector)
         err_str = err_str.format(minimal_selector, missing_required_params)
@@ -1024,7 +1068,7 @@ def _make_configurable(fn_or_cls,
             if unbound_positional_args:
               caller_supplied_args = list(
                   set(arg_names + list(kwargs)) -
-                  set(required_arg_names + list(required_kwargs)))
+                  set(required_arg_names + list(caller_required_kwargs)))
               fmt = ('\n  No values supplied by Gin or caller for arguments: {}'
                      '\n  Gin had values bound for: {gin_bound_args}'
                      '\n  Caller supplied values for: {caller_supplied_args}')
@@ -1035,13 +1079,13 @@ def _make_configurable(fn_or_cls,
                   caller_supplied_args=canonicalize(caller_supplied_args))
         err_str += "\n  In call to configurable '{}' ({}){}"
         scope_info = " in scope '{}'".format(scope_str) if scope_str else ''
-        err_str = err_str.format(name, fn, scope_info)
+        err_str = err_str.format(name, fn_or_cls, scope_info)
         utils.augment_exception_message_and_reraise(e, err_str)
 
-    return wrapper
+    return gin_wrapper
 
   decorated_fn_or_cls = _decorate_fn_or_cls(
-      apply_config, fn_or_cls, subclass=subclass)
+      decorator, fn_or_cls, subclass=subclass)
 
   _REGISTRY[selector] = Configurable(
       decorated_fn_or_cls,

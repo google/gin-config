@@ -48,14 +48,13 @@ The `@gin.configurable` decorator does three things:
     parameter settings (for parameters not already supplied by the function's
     caller).
 
-To determine which parameters are configurable, `@gin.configurable` takes
-a `whitelist` or a `blacklist` parameter. If some parameters are whitelisted
-the others would be blacklisted and viceversa. For instance, in the example
-above, whitelisting `num_layers` and `weight_decay` would imply that `images`
-and `num_outputs` are blacklisted.
-Since configuring the `images` parameter doesn't make much sense, it would
-be best to blacklist that parameter. Additionally, we might want a different
-name for the configurable object than "my_network":
+To determine which parameters are configurable, `@gin.configurable` takes a
+`whitelist` or a `blacklist` parameter. If some parameters are whitelisted the
+others would be blacklisted and vice versa. For instance, in the example above,
+whitelisting `num_layers` and `weight_decay` would imply that `images` and
+`num_outputs` are blacklisted. Since configuring the `images` parameter doesn't
+make much sense, it would be best to blacklist that parameter. Additionally, we
+might want a different name for the configurable object than "my_network":
 
 ```python
 @gin.configurable('supernet', blacklist=['images'])
@@ -107,16 +106,6 @@ that this means that when multiple classes in a class hierarchy are made
 configurable, Gin bindings applied to a base class's parameters will generally
 be ignored when constructing a subclass if the subclass passes these parameters
 to the base class's constructor.
-
-When calling a configurable you may want to explicitly indicate that a specific
-parameter __must__ be provided through Gin. To do so you can mark any arg or
-kwarg as `REQUIRED` when calling the function:
-
-    my_network(images, gin.REQUIRED, num_layers=5, weight_decay=gin.REQUIRED)
-
-The `REQUIRED` parameters will be checked at call time. If there are no Gin
-bindings supplied for these parameters, an error will be raised listing the
-missing parameter bindings along with the configurable name that requires them.
 
 ### Querying bound parameters
 
@@ -362,6 +351,39 @@ identifier. For example, under the hood Gin's implementation of constants uses a
 `constant` configurable that looks up values in a Gin-internal dictionary
 depending on the scope in which it is called. A string representation of the
 current Gin scope is available via the `current_scope_str` function.
+
+## Marking parameters as `gin.REQUIRED`
+
+Gin allows you to indicate that certain parameters __must__ be provided in a Gin
+config. This can be done in two ways:
+
+1.  At the call site of a function;
+2.  In a function's signature.
+
+When calling a configurable, you can mark any arg or kwarg as required by
+passing the `gin.REQUIRED` object:
+
+    my_network(images, gin.REQUIRED, num_layers=5, weight_decay=gin.REQUIRED)
+
+The `REQUIRED` parameters will be checked at call time. If there are no Gin
+bindings supplied for these parameters, an error will be raised listing the
+missing parameter bindings along with the configurable name that requires them.
+
+When defining a configurable, you can mark an argument as required by using
+`gin.REQUIRED` as its default value:
+
+    @gin.configurable
+    def run_training(model_dir=gin.REQUIRED, network=gin.REQUIRED, ...):
+      ...
+
+When a function with parameters defaulting to `gin.REQUIRED` is called, either
+the caller or the current Gin configuration must supply a value for the
+parameter, or an error will be raised.
+
+Providing `gin.REQUIRED` at the call site of a function is strictly more
+flexible than providing it in the signature (if the function is called more than
+once), avoids altering the function's signature in a Gin-dependent way, and may
+yield more readable code, so this approach should generally be preferred.
 
 ## Importing modules from within a Gin file
 

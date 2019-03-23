@@ -220,6 +220,11 @@ def new_object():
 
 
 @config.configurable
+def required_as_kwarg_default(positional_arg, required_kwarg=config.REQUIRED):
+  return positional_arg, required_kwarg
+
+
+@config.configurable
 class ConfigurableClass(object):
   """A configurable class."""
 
@@ -766,6 +771,10 @@ class ConfigTest(absltest.TestCase):
     obj_maker = config.external_configurable(object.__call__, 'obj_call')
     self.assertIsInstance(obj_maker(), object)
 
+  def testExternalConfigurableBuiltin(self):
+    wrapped_sum = config.external_configurable(sum)
+    self.assertEqual(wrapped_sum([1, 2, 3]), 6)
+
   def testConfigurableNamedTuple(self):
     config_str = """
       ConfigurableNamedTuple.field1 = 'field1'
@@ -988,7 +997,7 @@ class ConfigTest(absltest.TestCase):
       config.bind_parameter('a/b/blacklisted_configurable.blacklisted', 0)
 
   def testRequiredArgs(self):
-    with self.assertRaisesRegexp(RuntimeError, 'arg1.*arg2'):
+    with self.assertRaisesRegex(RuntimeError, 'arg1.*arg2'):
       required_args(config.REQUIRED, config.REQUIRED, 3)
 
     config.bind_parameter('scope/required_args.arg1', 1)
@@ -999,7 +1008,7 @@ class ConfigTest(absltest.TestCase):
           (1, 2, 3, 4, 5, 6))
 
   def testRequiredArgsWithVargs(self):
-    with self.assertRaisesRegexp(RuntimeError, 'arg1.*arg2'):
+    with self.assertRaisesRegex(RuntimeError, 'arg1.*arg2'):
       required_with_vargs(config.REQUIRED, config.REQUIRED, 3, 4, 5, kwarg1=6)
 
     config.bind_parameter('scope/required_with_vargs.arg1', 1)
@@ -1011,11 +1020,11 @@ class ConfigTest(absltest.TestCase):
       self.assertEqual(expected, actual)
 
   def testRequiredDisallowedInVargs(self):
-    with self.assertRaisesRegexp(ValueError, 'not allowed'):
+    with self.assertRaisesRegex(ValueError, 'not allowed'):
       required_with_vargs(1, 2, 3, config.REQUIRED)
 
   def testRequiredKwargs(self):
-    with self.assertRaisesRegexp(RuntimeError, 'kwarg1.*kwarg2|kwarg2.*kwarg1'):
+    with self.assertRaisesRegex(RuntimeError, 'kwarg1.*kwarg2|kwarg2.*kwarg1'):
       required_args(1, 2, 3, kwarg1=config.REQUIRED, kwarg2=config.REQUIRED)
 
     config.bind_parameter('scope/required_args.kwarg1', 4)
@@ -1027,8 +1036,8 @@ class ConfigTest(absltest.TestCase):
           (1, 2, 3, 4, 5, 6))
 
   def testRequiredArgsAndKwargs(self):
-    with self.assertRaisesRegexp(RuntimeError,
-                                 'arg2.*kwarg1.*kwarg2|arg2.*kwarg2.*kwarg1'):
+    with self.assertRaisesRegex(RuntimeError,
+                                'arg2.*kwarg1.*kwarg2|arg2.*kwarg2.*kwarg1'):
       required_args(
           1, config.REQUIRED, 3, kwarg1=config.REQUIRED, kwarg2=config.REQUIRED)
 
@@ -1040,8 +1049,8 @@ class ConfigTest(absltest.TestCase):
           (1, 2, 3, 4, 5, 6))
 
   def testRequiredArgsVkwargs(self):
-    with self.assertRaisesRegexp(RuntimeError,
-                                 'arg2.*kwarg1.*kwarg6|arg2.*kwarg6.*kwarg1'):
+    with self.assertRaisesRegex(RuntimeError,
+                                'arg2.*kwarg1.*kwarg6|arg2.*kwarg6.*kwarg1'):
       required_with_vkwargs(
           1, config.REQUIRED, 3, kwarg1=config.REQUIRED, kwarg6=config.REQUIRED)
 
@@ -1053,6 +1062,45 @@ class ConfigTest(absltest.TestCase):
       actual = required_with_vkwargs(
           1, config.REQUIRED, 3, kwarg1=config.REQUIRED, kwarg6=config.REQUIRED)
       self.assertEqual(expected, actual)
+
+  def testRequiredInSignature(self):
+    expected_err_regexp = (
+        r'Required bindings for `required_as_kwarg_default` not provided in '
+        r"config: \['required_kwarg'\]")
+    with self.assertRaisesRegex(RuntimeError, expected_err_regexp):
+      required_as_kwarg_default('positional')
+    # No issues if REQUIRED is also passed as by caller.
+    with self.assertRaisesRegex(RuntimeError, expected_err_regexp):
+      required_as_kwarg_default('positional', required_kwarg=config.REQUIRED)
+    # No issues if REQUIRED is also passed to different arg.
+    expected_err_regexp = r"config: \['positional_arg', 'required_kwarg'\]"
+    with self.assertRaisesRegex(RuntimeError, expected_err_regexp):
+      required_as_kwarg_default(config.REQUIRED, required_kwarg=config.REQUIRED)
+    # Everything works if all values are passed.
+    positional, kwarg = required_as_kwarg_default(
+        'positional', required_kwarg='a value')
+    # Even if not passed as a kwarg.
+    positional, kwarg = required_as_kwarg_default('positional', 'a value')
+    self.assertEqual(positional, 'positional')
+    self.assertEqual(kwarg, 'a value')
+
+  def testRequiredInSignatureBlacklistWhitelist(self):
+    expected_err_regexp = (
+        r"Argument 'arg' of 'test_required_blacklist' \('<function .+>'\) "
+        r'marked REQUIRED but blacklisted.')
+    with self.assertRaisesRegex(ValueError, expected_err_regexp):
+      config.external_configurable(
+          lambda arg=config.REQUIRED: arg,
+          'test_required_blacklist',
+          blacklist=['arg'])
+    expected_err_regexp = (
+        r"Argument 'arg' of 'test_required_whitelist' \('<function .+>'\) "
+        r'marked REQUIRED but not whitelisted.')
+    with self.assertRaisesRegex(ValueError, expected_err_regexp):
+      config.external_configurable(
+          lambda arg=config.REQUIRED, arg2=4: arg,
+          'test_required_whitelist',
+          whitelist=['arg2'])
 
   def testConfigScope(self):
     config_str = """
