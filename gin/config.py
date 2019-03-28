@@ -1084,7 +1084,10 @@ def _make_configurable(fn_or_cls,
 
   selector = module + '.' + name if module else name
   if not _INTERACTIVE_MODE and selector in _REGISTRY:
-    err_str = "A configurable matching '{}' already exists."
+    err_str = ("A configurable matching '{}' already exists.\n\n"
+               'To allow re-registration of configurables in an interactive '
+               'environment, use:\n\n'
+               '    gin.enter_interactive_mode()')
     raise ValueError(err_str.format(selector))
 
   if whitelist and blacklist:
