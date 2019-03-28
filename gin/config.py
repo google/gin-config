@@ -873,6 +873,165 @@ def config_scope(name_or_scope):
     _ACTIVE_SCOPES.pop()
 
 
+def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
+  """Creates the final Gin wrapper for the given function.
+
+  Args:
+    fn: The function that will be wrapped.
+    fn_or_cls: The original function or class being made configurable. This will
+      differ from `fn` when making a class configurable, in which case `fn` will
+      be the constructor/new function, while `fn_or_cls` will be the class.
+    name: The name given to the configurable.
+    selector: The full selector of the configurable (name including any module
+      components).
+    whitelist: A whitelist of configurable parameters.
+    blacklist: A blacklist of non-configurable parameters.
+
+  Returns:
+    The Gin wrapper around `fn`.
+  """
+  # At this point we have access to the final function to be wrapped, so we
+  # can cache a few things here.
+  fn_descriptor = "'{}' ('{}')".format(name, fn_or_cls)
+  signature_required_kwargs = _get_validated_required_kwargs(
+      fn, fn_descriptor, whitelist, blacklist)
+  initial_configurable_defaults = _get_default_configurable_parameter_values(
+      fn, whitelist, blacklist)
+
+  @six.wraps(fn)
+  def gin_wrapper(*args, **kwargs):
+    """Supplies fn with parameter values from the configuration."""
+    scope_components = current_scope()
+    new_kwargs = {}
+    for i in range(len(scope_components) + 1):
+      partial_scope_str = '/'.join(scope_components[:i])
+      new_kwargs.update(_CONFIG.get((partial_scope_str, selector), {}))
+    gin_bound_args = list(new_kwargs.keys())
+    scope_str = partial_scope_str
+
+    arg_names = _get_supplied_positional_parameter_names(fn, args)
+
+    for arg in args[len(arg_names):]:
+      if arg is REQUIRED:
+        raise ValueError(
+            'gin.REQUIRED is not allowed for unnamed (vararg) parameters. If '
+            'the function being called is wrapped by a non-Gin decorator, '
+            'try explicitly providing argument names for positional '
+            'parameters.')
+
+    required_arg_names = []
+    required_arg_indexes = []
+    for i, arg in enumerate(args[:len(arg_names)]):
+      if arg is REQUIRED:
+        required_arg_names.append(arg_names[i])
+        required_arg_indexes.append(i)
+
+    caller_required_kwargs = []
+    for kwarg, value in six.iteritems(kwargs):
+      if value is REQUIRED:
+        caller_required_kwargs.append(kwarg)
+
+    # If the caller passed arguments as positional arguments that correspond to
+    # a keyword arg in new_kwargs, remove the keyword argument from new_kwargs
+    # to let the caller win and avoid throwing an error. Unless it is an arg
+    # marked as REQUIRED.
+    for arg_name in arg_names:
+      if arg_name not in required_arg_names:
+        new_kwargs.pop(arg_name, None)
+
+    # Get default values for configurable parameters.
+    operative_parameter_values = initial_configurable_defaults.copy()
+    # Update with the values supplied via configuration.
+    operative_parameter_values.update(new_kwargs)
+
+    # Remove any values from the operative config that are overridden by the
+    # caller. These can't be configured, so they won't be logged. We skip values
+    # that are marked as REQUIRED.
+    for k in arg_names:
+      if k not in required_arg_names:
+        operative_parameter_values.pop(k, None)
+    for k in kwargs:
+      if k not in caller_required_kwargs:
+        operative_parameter_values.pop(k, None)
+
+    # An update is performed in case another caller of this same configurable
+    # object has supplied a different set of arguments. By doing an update, a
+    # Gin-supplied or default value will be present if it was used (not
+    # overridden by the caller) at least once.
+    op_cfg = _OPERATIVE_CONFIG.setdefault((scope_str, selector), {})
+    op_cfg.update(operative_parameter_values)
+
+    # We call deepcopy for two reasons: First, to prevent the called function
+    # from modifying any of the values in `_CONFIG` through references passed in
+    # via `new_kwargs`; Second, to facilitate evaluation of any
+    # `ConfigurableReference` instances buried somewhere inside `new_kwargs`.
+    # See the docstring on `ConfigurableReference.__deepcopy__` above for more
+    # details on the dark magic happening here.
+    new_kwargs = copy.deepcopy(new_kwargs)
+
+    # Validate args marked as REQUIRED have been bound in the Gin config.
+    missing_required_params = []
+    new_args = list(args)
+    for i, arg_name in zip(required_arg_indexes, required_arg_names):
+      if arg_name not in new_kwargs:
+        missing_required_params.append(arg_name)
+      else:
+        new_args[i] = new_kwargs.pop(arg_name)
+
+    # Validate kwargs marked as REQUIRED have been bound in the Gin config.
+    for required_kwarg in signature_required_kwargs:
+      if (required_kwarg not in arg_names and  # not a positional arg
+          required_kwarg not in kwargs and  # or a keyword arg
+          required_kwarg not in new_kwargs):  # or bound in config
+        missing_required_params.append(required_kwarg)
+    for required_kwarg in caller_required_kwargs:
+      if required_kwarg not in new_kwargs:
+        missing_required_params.append(required_kwarg)
+      else:
+        # Remove from kwargs and let the new_kwargs value be used.
+        kwargs.pop(required_kwarg)
+
+    if missing_required_params:
+      missing_required_params = (
+          _order_by_signature(fn, missing_required_params))
+      err_str = 'Required bindings for `{}` not provided in config: {}'
+      minimal_selector = _REGISTRY.minimal_selector(selector)
+      err_str = err_str.format(minimal_selector, missing_required_params)
+      raise RuntimeError(err_str)
+
+    # Now, update with the caller-supplied `kwargs`, allowing the caller to have
+    # the final say on keyword argument values.
+    new_kwargs.update(kwargs)
+
+    try:
+      return fn(*new_args, **new_kwargs)
+    except Exception as e:  # pylint: disable=broad-except
+      err_str = ''
+      if isinstance(e, TypeError):
+        all_arg_names = _get_all_positional_parameter_names(fn)
+        if len(new_args) < len(all_arg_names):
+          unbound_positional_args = list(
+              set(all_arg_names[len(new_args):]) - set(new_kwargs))
+          if unbound_positional_args:
+            caller_supplied_args = list(
+                set(arg_names + list(kwargs)) -
+                set(required_arg_names + list(caller_required_kwargs)))
+            fmt = ('\n  No values supplied by Gin or caller for arguments: {}'
+                   '\n  Gin had values bound for: {gin_bound_args}'
+                   '\n  Caller supplied values for: {caller_supplied_args}')
+            canonicalize = lambda x: list(map(str, sorted(x)))
+            err_str += fmt.format(
+                canonicalize(unbound_positional_args),
+                gin_bound_args=canonicalize(gin_bound_args),
+                caller_supplied_args=canonicalize(caller_supplied_args))
+      err_str += "\n  In call to configurable '{}' ({}){}"
+      scope_info = " in scope '{}'".format(scope_str) if scope_str else ''
+      err_str = err_str.format(name, fn_or_cls, scope_info)
+      utils.augment_exception_message_and_reraise(e, err_str)
+
+  return gin_wrapper
+
+
 def _make_configurable(fn_or_cls,
                        name=None,
                        module=None,
@@ -943,146 +1102,8 @@ def _make_configurable(fn_or_cls,
 
   def decorator(fn):
     """Wraps `fn` so that it obtains parameters from the configuration."""
-    # At this point we have access to the final function to be wrapped, so we
-    # can cache a few things here.
-    fn_descriptor = "'{}' ('{}')".format(name, fn_or_cls)
-    signature_required_kwargs = _get_validated_required_kwargs(
-        fn, fn_descriptor, whitelist, blacklist)
-    initial_configurable_defaults = _get_default_configurable_parameter_values(
-        fn, whitelist, blacklist)
-
-    @six.wraps(fn)
-    def gin_wrapper(*args, **kwargs):
-      """Supplies fn with parameter values from the configuration."""
-      scope_components = current_scope()
-      new_kwargs = {}
-      for i in range(len(scope_components) + 1):
-        partial_scope_str = '/'.join(scope_components[:i])
-        new_kwargs.update(_CONFIG.get((partial_scope_str, selector), {}))
-      gin_bound_args = list(new_kwargs.keys())
-      scope_str = partial_scope_str
-
-      arg_names = _get_supplied_positional_parameter_names(fn, args)
-
-      for arg in args[len(arg_names):]:
-        if arg is REQUIRED:
-          raise ValueError(
-              'gin.REQUIRED is not allowed for unnamed (vararg) parameters. If '
-              'the function being called is wrapped by a non-Gin decorator, '
-              'try explicitly providing argument names for positional '
-              'parameters.')
-
-      required_arg_names = []
-      required_arg_indexes = []
-      for i, arg in enumerate(args[:len(arg_names)]):
-        if arg is REQUIRED:
-          required_arg_names.append(arg_names[i])
-          required_arg_indexes.append(i)
-
-      caller_required_kwargs = []
-      for kwarg, value in six.iteritems(kwargs):
-        if value is REQUIRED:
-          caller_required_kwargs.append(kwarg)
-
-      # If the caller passed arguments as positional arguments that correspond
-      # to a keyword arg in new_kwargs, remove the keyword argument from
-      # new_kwargs to let the caller win and avoid throwing an error. Unless it
-      # is an arg marked as REQUIRED.
-      for arg_name in arg_names:
-        if arg_name not in required_arg_names:
-          new_kwargs.pop(arg_name, None)
-
-      # Get default values for configurable parameters.
-      operative_parameter_values = initial_configurable_defaults.copy()
-      # Update with the values supplied via configuration.
-      operative_parameter_values.update(new_kwargs)
-
-      # Remove any values from the operative config that are overridden by the
-      # caller. These can't be configured, so they won't be logged. We skip
-      # values that are marked as REQUIRED.
-      for k in arg_names:
-        if k not in required_arg_names:
-          operative_parameter_values.pop(k, None)
-      for k in kwargs:
-        if k not in caller_required_kwargs:
-          operative_parameter_values.pop(k, None)
-
-      # An update is performed in case another caller of this same configurable
-      # object has supplied a different set of arguments. By doing an update, a
-      # Gin-supplied or default value will be present if it was used (not
-      # overridden by the caller) at least once.
-      op_cfg = _OPERATIVE_CONFIG.setdefault((scope_str, selector), {})
-      op_cfg.update(operative_parameter_values)
-
-      # We call deepcopy for two reasons: First, to prevent the called function
-      # from modifying any of the values in `_CONFIG` through references passed
-      # in via `new_kwargs`; Second, to facilitate evaluation of any
-      # `ConfigurableReference` instances buried somewhere inside
-      # `new_kwargs`. See the docstring on `ConfigurableReference.__deepcopy__`
-      # above for more details on the dark magic happening here.
-      new_kwargs = copy.deepcopy(new_kwargs)
-
-      # Validate args marked as REQUIRED have been bound in the Gin config.
-      missing_required_params = []
-      new_args = list(args)
-      for i, arg_name in zip(required_arg_indexes, required_arg_names):
-        if arg_name not in new_kwargs:
-          missing_required_params.append(arg_name)
-        else:
-          new_args[i] = new_kwargs.pop(arg_name)
-
-      # Validate kwargs marked as REQUIRED have been bound in the Gin config.
-      for required_kwarg in signature_required_kwargs:
-        if (required_kwarg not in arg_names and  # not a positional arg
-            required_kwarg not in kwargs and  # or a keyword arg
-            required_kwarg not in new_kwargs):  # or bound in config
-          missing_required_params.append(required_kwarg)
-      for required_kwarg in caller_required_kwargs:
-        if required_kwarg not in new_kwargs:
-          missing_required_params.append(required_kwarg)
-        else:
-          # Remove from kwargs and let the new_kwargs value be used.
-          kwargs.pop(required_kwarg)
-
-      if missing_required_params:
-        missing_required_params = (
-            _order_by_signature(fn, missing_required_params))
-        err_str = 'Required bindings for `{}` not provided in config: {}'
-        minimal_selector = _REGISTRY.minimal_selector(selector)
-        err_str = err_str.format(minimal_selector, missing_required_params)
-        raise RuntimeError(err_str)
-
-      # Now, update with the caller-supplied `kwargs`, allowing the caller to
-      # have the final say on keyword argument values.
-      new_kwargs.update(kwargs)
-
-      try:
-        return fn(*new_args, **new_kwargs)
-      except Exception as e:  # pylint: disable=broad-except
-        err_str = ''
-        if isinstance(e, TypeError):
-          all_arg_names = _get_all_positional_parameter_names(fn)
-          if len(new_args) < len(all_arg_names):
-            unbound_positional_args = list(
-                set(all_arg_names[len(new_args):]) - set(new_kwargs))
-            if unbound_positional_args:
-              caller_supplied_args = list(
-                  set(arg_names + list(kwargs)) -
-                  set(required_arg_names + list(caller_required_kwargs)))
-              fmt = ('\n  No values supplied by Gin or caller for arguments: {}'
-                     '\n  Gin had values bound for: {gin_bound_args}'
-                     '\n  Caller supplied values for: {caller_supplied_args}')
-              canonicalize = lambda x: list(map(str, sorted(x)))
-              err_str += fmt.format(
-                  canonicalize(unbound_positional_args),
-                  gin_bound_args=canonicalize(gin_bound_args),
-                  caller_supplied_args=canonicalize(caller_supplied_args))
-        err_str += "\n  In call to configurable '{}' ({}){}"
-        scope_info = " in scope '{}'".format(scope_str) if scope_str else ''
-        err_str = err_str.format(name, fn_or_cls, scope_info)
-        utils.augment_exception_message_and_reraise(e, err_str)
-
-    return gin_wrapper
+    return _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist,
+                             blacklist)
 
   decorated_fn_or_cls = _decorate_fn_or_cls(
       decorator, fn_or_cls, subclass=subclass)
