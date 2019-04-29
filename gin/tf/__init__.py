@@ -65,6 +65,6 @@ for symbol in ["_ensure_tf_install", "_sys"]:
 
 
 # pylint: disable=unused-import
-from gin.tf.utils import GinConfigSaverHook
+from gin.tf.utils import GinConfigCallback
 
 # pylint: enable=g-import-not-at-top

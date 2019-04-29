@@ -31,7 +31,7 @@ from tensorflow.core.framework import summary_pb2
 
 
 # Register TF file reader for Gin's parse_config_file.
-config.register_file_reader(tf.gfile.Open, tf.gfile.Exists)
+config.register_file_reader(tf.io.gfile.GFile, tf.io.gfile.exists)
 
 
 @config.configurable
@@ -40,8 +40,8 @@ def singleton_per_graph(constructor):
   return config.singleton_value(key, constructor)
 
 
-class GinConfigSaverHook(tf.train.SessionRunHook):
-  """A SessionRunHook that saves and summarizes the operative config.
+class GinConfigCallback(tf.keras.callbacks.Callback):
+  """A `Callback` that saves and summarizes the operative config.
 
   This hook will save Gin's operative configuration to a specified directory, as
   well as optionally summarizing it so that it will appear in TensorBoard's
@@ -57,7 +57,7 @@ class GinConfigSaverHook(tf.train.SessionRunHook):
                output_dir,
                base_name='operative_config',
                summarize_config=True,
-               summary_writer=None):
+               global_step_val=0):
     """Construct the GinConfigSaverHook.
 
     Args:
@@ -77,7 +77,7 @@ class GinConfigSaverHook(tf.train.SessionRunHook):
     self._output_dir = output_dir
     self._base_name = base_name
     self._summarize_config = summarize_config
-    self._summary_writer = summary_writer
+    self.global_step_val = global_step_val
 
   def _markdownify_operative_config_str(self, string):
     """Convert an operative config string to markdown format."""
@@ -105,19 +105,14 @@ class GinConfigSaverHook(tf.train.SessionRunHook):
 
     return '\n'.join(output_lines)
 
-  def after_create_session(self, session=None, coord=None):
+  def on_train_begin(self, logs=None):
     """Writes out Gin's operative config, and maybe adds a summary of it."""
     config_str = config.operative_config_str()
-    if not tf.gfile.IsDirectory(self._output_dir):
-      tf.gfile.MakeDirs(self._output_dir)
-    global_step_val = 0
-    if session is not None:
-      global_step = tf.train.get_global_step()
-      if global_step is not None:
-        global_step_val = session.run(global_step)
-    filename = '%s-%s.gin' % (self._base_name, global_step_val)
+    if not tf.io.gfile.isdir(self._output_dir):
+      tf.io.gfile.MakeDirs(self._output_dir)
+    filename = '%s-%s.gin' % (self._base_name, self.global_step_val)
     config_path = os.path.join(self._output_dir, filename)
-    with tf.gfile.GFile(config_path, 'w') as f:
+    with tf.io.gfile.GFile(config_path, 'w') as f:
       f.write(config_str)
 
     if self._summarize_config:
@@ -125,16 +120,8 @@ class GinConfigSaverHook(tf.train.SessionRunHook):
       summary_metadata = summary_pb2.SummaryMetadata()
       summary_metadata.plugin_data.plugin_name = 'text'
       summary_metadata.plugin_data.content = b'{}'
-      text_tensor = tf.make_tensor_proto(md_config_str)
-      summary = summary_pb2.Summary()
-      summary.value.add(
-          tag='gin/' + self._base_name,
-          tensor=text_tensor,
-          metadata=summary_metadata)
-      if not self._summary_writer:
-        # Creating the FileWriter also creates the events file, so it should be
-        # done here (where it is most likely to only occur on chief workers), as
-        # opposed to in the constructor.
-        self._summary_writer = tf.summary.FileWriterCache.get(self._output_dir)
-      self._summary_writer.add_summary(summary, global_step_val)
-      self._summary_writer.flush()
+      text_tensor = tf.compat.v1.make_tensor_proto(md_config_str)
+      tf.summary.write(
+        tag='gin/' + self._base_name, tensor=text_tensor,
+        step=self.global_step_val,
+        metadata=summary_metadata)

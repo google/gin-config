@@ -165,7 +165,7 @@ class GinConfigSaverHookTest(tf.test.TestCase):
     output_dir, summary_writer = self.run_log_config_hook_maybe_with_summary(
         global_step_value=global_step_value, summarize_config=False)
     expected_file_name = 'operative_config-%d.gin' % global_step_value
-    with tf.gfile.Open(os.path.join(output_dir, expected_file_name)) as f:
+    with tf.io.gfile.Open(os.path.join(output_dir, expected_file_name)) as f:
       operative_config_str = f.read()
     self.assertEqual(operative_config_str, config.operative_config_str())
     summary_writer.assert_summaries(test_case=self, expected_logdir=output_dir)
@@ -177,7 +177,7 @@ class GinConfigSaverHookTest(tf.test.TestCase):
         global_step_value=global_step_value,
         base_name='custom_name')
     expected_file_name = 'custom_name-%d.gin' % global_step_value
-    with tf.gfile.Open(os.path.join(output_dir, expected_file_name)) as f:
+    with tf.io.gfile.Open(os.path.join(output_dir, expected_file_name)) as f:
       operative_config_str = f.read()
     self.assertEqual(operative_config_str, config.operative_config_str())
     summary_writer.assert_summaries(test_case=self, expected_logdir=output_dir)
@@ -197,7 +197,7 @@ class GinConfigSaverHookTest(tf.test.TestCase):
     output_dir, summary_writer = self.run_log_config_hook_maybe_with_summary(
         global_step_value=None)
     expected_file_name = 'operative_config-0.gin'
-    with tf.gfile.Open(os.path.join(output_dir, expected_file_name)) as f:
+    with tf.io.gfile.Open(os.path.join(output_dir, expected_file_name)) as f:
       operative_config_str = f.read()
     self.assertEqual(operative_config_str, config.operative_config_str())
     summary_writer.assert_summaries(test_case=self, expected_logdir=output_dir)
