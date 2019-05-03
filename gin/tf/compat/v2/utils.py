@@ -22,6 +22,7 @@ from __future__ import print_function
 import os
 
 from gin import config
+import gin.tf.compat.shared.utils
 
 import tensorflow as tf
 
@@ -30,16 +31,7 @@ from tensorflow.core.framework import summary_pb2
 # pylint: enable=g-direct-tensorflow-import
 
 
-# Register TF file reader for Gin's parse_config_file.
-config.register_file_reader(tf.io.gfile.GFile, tf.io.gfile.exists)
-
-
-@config.configurable
-def singleton_per_graph(constructor):
-  key = (config.current_scope_str(), tf.get_default_graph())
-  return config.singleton_value(key, constructor)
-
-
+@gin.configurable
 class GinConfigCallback(tf.keras.callbacks.Callback):
   """A `Callback` that saves and summarizes the operative config.
 
@@ -56,8 +48,7 @@ class GinConfigCallback(tf.keras.callbacks.Callback):
   def __init__(self,
                output_dir,
                base_name='operative_config',
-               summarize_config=True,
-               global_step_val=0):
+               summarize_config=True):
     """Construct the GinConfigSaverHook.
 
     Args:
@@ -77,7 +68,6 @@ class GinConfigCallback(tf.keras.callbacks.Callback):
     self._output_dir = output_dir
     self._base_name = base_name
     self._summarize_config = summarize_config
-    self.global_step_val = global_step_val
 
   def _markdownify_operative_config_str(self, string):
     """Convert an operative config string to markdown format."""
@@ -110,7 +100,7 @@ class GinConfigCallback(tf.keras.callbacks.Callback):
     config_str = config.operative_config_str()
     if not tf.io.gfile.isdir(self._output_dir):
       tf.io.gfile.MakeDirs(self._output_dir)
-    filename = '%s-%s.gin' % (self._base_name, self.global_step_val)
+    filename = '%s-%s.gin' % (self._base_name, self.model.optimizer.iterations)
     config_path = os.path.join(self._output_dir, filename)
     with tf.io.gfile.GFile(config_path, 'w') as f:
       f.write(config_str)

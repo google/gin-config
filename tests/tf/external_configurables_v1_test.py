@@ -23,12 +23,12 @@ from gin.tf import external_configurables  # pylint: disable=unused-import
 import tensorflow as tf
 
 # Necessary for AdagradaDAOptimizer test.
-config.external_configurable(tf.train.get_global_step)
+config.external_configurable(tf.compat.v1.train.get_global_step)
 
 
 @config.configurable
 def fake_train_model(learning_rate, optimizer):
-  global_step = tf.train.get_or_create_global_step()
+  global_step = tf.compat.v1.train.get_or_create_global_step()
   lr = learning_rate(global_step=global_step)
   opt = optimizer(learning_rate=lr)
   return lr, opt
@@ -55,32 +55,34 @@ class TFConfigTest(tf.test.TestCase):
       MomentumOptimizer.momentum = 0.95
     """
     config.parse_config(config_str)
+    graph = tf.Graph()
+    with graph.as_default():
+      lr, opt = fake_train_model()  # pylint: disable=no-value-for-parameter
+      global_step = tf.compat.v1.train.get_or_create_global_step()
+      update_global_step = global_step.assign(300000)
+      init = tf.compat.v1.global_variables_initializer()
 
-    lr, opt = fake_train_model()  # pylint: disable=no-value-for-parameter
-    global_step = tf.contrib.framework.get_or_create_global_step()
-    update_global_step = global_step.assign(300000)
-    init = tf.global_variables_initializer()
-
-    self.assertIsInstance(opt, tf.train.MomentumOptimizer)
-    self.assertAlmostEqual(opt._momentum, 0.95)
-    with self.test_session() as sess:
-      sess.run(init)
-      self.assertAlmostEqual(sess.run(lr), 0.01)
-      sess.run(update_global_step)
-      self.assertAlmostEqual(sess.run(lr), 0.001)
+      self.assertIsInstance(opt, tf.compat.v1.train.MomentumOptimizer)
+      self.assertAlmostEqual(opt._momentum, 0.95)
+      with self.test_session() as sess:
+        sess.run(init)
+        self.assertAlmostEqual(sess.run(lr), 0.01)
+        sess.run(update_global_step)
+        self.assertAlmostEqual(sess.run(lr), 0.001)
 
   def testOptimizersWithDefaults(self):
     optimizers = [
-        tf.train.GradientDescentOptimizer,
-        tf.train.AdadeltaOptimizer,
-        tf.train.AdagradOptimizer,
-        (tf.train.AdagradDAOptimizer, {'global_step': '@get_global_step()'}),
-        (tf.train.MomentumOptimizer, {'momentum': 0.9}),
-        tf.train.AdamOptimizer,
-        tf.train.FtrlOptimizer,
-        tf.train.ProximalGradientDescentOptimizer,
-        tf.train.ProximalAdagradOptimizer,
-        tf.train.RMSPropOptimizer,
+        tf.compat.v1.train.GradientDescentOptimizer,
+        tf.compat.v1.train.AdadeltaOptimizer,
+        tf.compat.v1.train.AdagradOptimizer,
+        (tf.compat.v1.train.AdagradDAOptimizer,
+          {'global_step': '@get_global_step()'}),
+        (tf.compat.v1.train.MomentumOptimizer, {'momentum': 0.9}),
+        tf.compat.v1.train.AdamOptimizer,
+        tf.compat.v1.train.FtrlOptimizer,
+        tf.compat.v1.train.ProximalGradientDescentOptimizer,
+        tf.compat.v1.train.ProximalAdagradOptimizer,
+        tf.compat.v1.train.RMSPropOptimizer,
     ]
     constant_lr = lambda global_step: 0.01
     for optimizer in optimizers:
