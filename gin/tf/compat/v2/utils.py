@@ -31,7 +31,7 @@ from tensorflow.core.framework import summary_pb2
 # pylint: enable=g-direct-tensorflow-import
 
 
-class GinConfigCallback(tf.keras.callbacks.Callback):
+class GinConfigSaverCallback(tf.keras.callbacks.Callback):
   """A `Callback` that saves and summarizes the operative config.
 
   This hook will save Gin's operative configuration to a specified directory, as
@@ -112,5 +112,5 @@ class GinConfigCallback(tf.keras.callbacks.Callback):
       text_tensor = tf.compat.v1.make_tensor_proto(md_config_str)
       tf.summary.write(
         tag='gin/' + self._base_name, tensor=text_tensor,
-        step=self.global_step_val,
+        step=self.model.optimizer.iterations,
         metadata=summary_metadata)

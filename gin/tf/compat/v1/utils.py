@@ -138,7 +138,7 @@ class GinConfigSaverHook(tf.compat.v1.train.SessionRunHook):
       self._summary_writer.flush()
 
 
-class GinSaverCallback(tf.keras.callbacks.Callback):
+class GinConfigSaverCallback(tf.keras.callbacks.Callback):
     def __init__(
             self, output_dir, base_name='operative_config',
             summarize_config=True, summary_writer=None):
@@ -147,7 +147,7 @@ class GinSaverCallback(tf.keras.callbacks.Callback):
             base_name=base_name,
             summarize_config=summarize_config,
             summary_writer=summary_writer)
-        super(GinSaverCallback, self).__init__()
+        super(GinConfigSaverCallback, self).__init__()
 
     def on_train_begin(self, logs=None):
         self._hook.after_create_session()
