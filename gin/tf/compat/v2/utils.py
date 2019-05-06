@@ -31,7 +31,6 @@ from tensorflow.core.framework import summary_pb2
 # pylint: enable=g-direct-tensorflow-import
 
 
-@gin.configurable
 class GinConfigCallback(tf.keras.callbacks.Callback):
   """A `Callback` that saves and summarizes the operative config.
 
