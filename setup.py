@@ -23,11 +23,10 @@ https://github.com/google/gin-config
 
 import codecs
 from os import path
-import sys
 from setuptools import find_packages
 from setuptools import setup
 
-_VERSION = '0.2.0'
+_VERSION = '0.2.1'
 
 here = path.abspath(path.dirname(__file__))
 
@@ -42,8 +41,6 @@ test_requirements = [
     'pytest >= 3.8.0',
 ]
 
-if sys.version_info < (3, 4):
-  install_requires.append('enum34 >= 1.1.6')
 
 setup(
     name='gin-config',
@@ -55,6 +52,7 @@ setup(
     extras_require={  # Optional
         'tensorflow': ['tensorflow >= 1.13.0'],
         'tensorflow_gpu': ['tensorflow-gpu >= 1.13.0'],
+        ':python_version<"3"': ['enum34'],
     },
     tests_require=test_requirements,
     description='Gin-config: a lightweight configuration library for Python',
