@@ -99,7 +99,8 @@ class GinConfigSaverCallback(tf.keras.callbacks.Callback):
     config_str = config.operative_config_str()
     if not tf.io.gfile.isdir(self._output_dir):
       tf.io.gfile.MakeDirs(self._output_dir)
-    filename = '%s-%s.gin' % (self._base_name, self.model.optimizer.iterations)
+    step = self.model.optimizer.iterations.numpy()
+    filename = '%s-%s.gin' % (self._base_name, step)
     config_path = os.path.join(self._output_dir, filename)
     with tf.io.gfile.GFile(config_path, 'w') as f:
       f.write(config_str)
@@ -112,5 +113,4 @@ class GinConfigSaverCallback(tf.keras.callbacks.Callback):
       text_tensor = tf.compat.v1.make_tensor_proto(md_config_str)
       tf.summary.write(
         tag='gin/' + self._base_name, tensor=text_tensor,
-        step=self.model.optimizer.iterations,
-        metadata=summary_metadata)
+        step=step, metadata=summary_metadata)

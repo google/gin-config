@@ -44,6 +44,7 @@ for package, module in (
     (tf.keras.callbacks, 'tf.keras.callbacks'),
     (tf.keras.constraints, 'tf.keras.constraints'),
     (tf.keras.layers, 'tf.keras.layers'),
+    (tf.keras.regularizers, 'tf.keras.regularizers'),
     ):
   _register_callables(package, module, blacklist)
 
