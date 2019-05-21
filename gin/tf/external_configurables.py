@@ -113,6 +113,14 @@ config.external_configurable(tf.random.poisson, 'tf.random.poisson')
 config.external_configurable(tf.random.truncated_normal,
                              'tf.random.truncated_normal')
 config.external_configurable(tf.random.uniform, 'tf.random.uniform')
+config.external_configurable(tf.random.stateless_categorical,
+                             'tf.random.stateless_categorical')
+config.external_configurable(tf.random.stateless_normal,
+                             'tf.random.stateless_normal')
+config.external_configurable(tf.random.stateless_truncated_normal,
+                             'tf.random.stateless_truncated_normal')
+config.external_configurable(tf.random.stateless_uniform,
+                             'tf.random.stateless_uniform')
 
 # Constants
 
