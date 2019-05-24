@@ -136,76 +136,76 @@ config.external_configurable(
 
 config.external_configurable(
     torch.nn.modules.activation.Threshold,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.ReLU,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.RReLU,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.Hardtanh,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.ReLU6,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.Sigmoid,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.Tanh,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.ELU,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.CELU,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.SELU,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.GLU,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.Hardshrink,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.LeakyReLU,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.LogSigmoid,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.Softplus,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.Softshrink,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.MultiheadAttention,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.PReLU,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.Softsign,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.Tanhshrink,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.Softmin,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.Softmax,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.Softmax2d,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 config.external_configurable(
     torch.nn.modules.activation.LogSoftmax,
-    'torch.nn.modules.activation')
+    module='torch.nn.modules.activation')
 
 
 #########################
@@ -214,97 +214,97 @@ config.external_configurable(
 
 config.external_configurable(
     torch.distributions.bernoulli.Bernoulli,
-    'torch.distributions.bernoulli')
+    module='torch.distributions.bernoulli')
 config.external_configurable(
     torch.distributions.beta.Beta,
-    'torch.distributions.beta')
+    module='torch.distributions.beta')
 config.external_configurable(
     torch.distributions.binomial.Binomial,
-    'torch.distributions.binomial')
+    module='torch.distributions.binomial')
 config.external_configurable(
     torch.distributions.categorical.Categorical,
-    'torch.distributions.categorical')
+    module='torch.distributions.categorical')
 config.external_configurable(
     torch.distributions.cauchy.Cauchy,
-    'torch.distributions.cauchy')
+    module='torch.distributions.cauchy')
 config.external_configurable(
     torch.distributions.chi2.Chi2,
-    'torch.distributions.chi2')
+    module='torch.distributions.chi2')
 config.external_configurable(
     torch.distributions.dirichlet.Dirichlet,
-    'torch.distributions.dirichlet')
+    module='torch.distributions.dirichlet')
 config.external_configurable(
     torch.distributions.exponential.Exponential,
-    'torch.distributions.exponential')
+    module='torch.distributions.exponential')
 config.external_configurable(
     torch.distributions.fishersnedecor.FisherSnedecor,
-    'torch.distributions.fishersnedecor')
+    module='torch.distributions.fishersnedecor')
 config.external_configurable(
     torch.distributions.gamma.Gamma,
-    'torch.distributions.gamma')
+    module='torch.distributions.gamma')
 config.external_configurable(
     torch.distributions.geometric.Geometric,
-    'torch.distributions.geometric')
+    module='torch.distributions.geometric')
 config.external_configurable(
     torch.distributions.gumbel.Gumbel,
-    'torch.distributions.gumbel')
+    module='torch.distributions.gumbel')
 config.external_configurable(
     torch.distributions.half_cauchy.HalfCauchy,
-    'torch.distributions.half_cauchy')
+    module='torch.distributions.half_cauchy')
 config.external_configurable(
     torch.distributions.half_normal.HalfNormal,
-    'torch.distributions.half_normal')
+    module='torch.distributions.half_normal')
 config.external_configurable(
     torch.distributions.independent.Independent,
-    'torch.distributions.independent')
+    module='torch.distributions.independent')
 config.external_configurable(
     torch.distributions.laplace.Laplace,
-    'torch.distributions.laplace')
+    module='torch.distributions.laplace')
 config.external_configurable(
     torch.distributions.log_normal.LogNormal,
-    'torch.distributions.log_normal')
+    module='torch.distributions.log_normal')
 config.external_configurable(
     torch.distributions.lowrank_multivariate_normal.LowRankMultivariateNormal,
-    'torch.distributions.lowrank_multivariate_normal')
+    module='torch.distributions.lowrank_multivariate_normal')
 config.external_configurable(
     torch.distributions.multinomial.Multinomial,
-    'torch.distributions.multinomial')
+    module='torch.distributions.multinomial')
 config.external_configurable(
     torch.distributions.multivariate_normal.MultivariateNormal,
-    'torch.distributions.multivariate_normal')
+    module='torch.distributions.multivariate_normal')
 config.external_configurable(
     torch.distributions.negative_binomial.NegativeBinomial,
-    'torch.distributions.negative_binomial')
+    module='torch.distributions.negative_binomial')
 config.external_configurable(
     torch.distributions.normal.Normal,
-    'torch.distributions.normal')
+    module='torch.distributions.normal')
 config.external_configurable(
     torch.distributions.one_hot_categorical.OneHotCategorical,
-    'torch.distributions.one_hot_categorical')
+    module='torch.distributions.one_hot_categorical')
 config.external_configurable(
     torch.distributions.pareto.Pareto,
-    'torch.distributions.pareto')
+    module='torch.distributions.pareto')
 config.external_configurable(
     torch.distributions.poisson.Poisson,
-    'torch.distributions.poisson')
+    module='torch.distributions.poisson')
 config.external_configurable(
     torch.distributions.relaxed_bernoulli.RelaxedBernoulli,
-    'torch.distributions.relaxed_bernoulli')
+    module='torch.distributions.relaxed_bernoulli')
 config.external_configurable(
     torch.distributions.relaxed_bernoulli.LogitRelaxedBernoulli,
-    'torch.distributions.relaxed_bernoulli')
+    module='torch.distributions.relaxed_bernoulli')
 config.external_configurable(
     torch.distributions.relaxed_categorical.RelaxedOneHotCategorical,
-    'torch.distributions.relaxed_categorical')
+    module='torch.distributions.relaxed_categorical')
 config.external_configurable(
     torch.distributions.studentT.StudentT,
-    'torch.distributions.studentT')
+    module='torch.distributions.studentT')
 config.external_configurable(
     torch.distributions.uniform.Uniform,
-    'torch.distributions.uniform')
+    module='torch.distributions.uniform')
 config.external_configurable(
     torch.distributions.weibull.Weibull,
-    'torch.distributions.weibull')
+    module='torch.distributions.weibull')
 
 
 #############

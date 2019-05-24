@@ -39,7 +39,7 @@ def _ensure_torch_install():  # pylint: disable=g-statement-before-imports
         raise
 
     # Update this whenever we need to depend on a newer PyTorch release.
-    required_torch_version = "1.1.0"
+    required_torch_version = "1.0.0"
 
     import distutils.version
 
