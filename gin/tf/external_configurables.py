@@ -89,6 +89,25 @@ config.external_configurable(
 config.external_configurable(
     tf.compat.v1.train.RMSPropOptimizer, module='tf.train')
 
+# Keras optimizers.
+
+config.external_configurable(
+    tf.keras.optimizers.Adadelta, module='tf.keras.optimizers')
+config.external_configurable(
+    tf.keras.optimizers.Adagrad, module='tf.keras.optimizers')
+config.external_configurable(
+    tf.keras.optimizers.Adam, module='tf.keras.optimizers')
+config.external_configurable(
+    tf.keras.optimizers.Adamax, module='tf.keras.optimizers')
+config.external_configurable(
+    tf.keras.optimizers.Ftrl, module='tf.keras.optimizers')
+config.external_configurable(
+    tf.keras.optimizers.Nadam, module='tf.keras.optimizers')
+config.external_configurable(
+    tf.keras.optimizers.RMSprop, module='tf.keras.optimizers')
+config.external_configurable(
+    tf.keras.optimizers.SGD, module='tf.keras.optimizers')
+
 # Activation functions.
 
 config.external_configurable(tf.nn.crelu, 'tf.nn.crelu')
