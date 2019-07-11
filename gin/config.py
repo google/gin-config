@@ -1812,7 +1812,7 @@ def constant(name, value):
   _CONSTANTS[name] = value
 
 
-def constants_from_enum(cls, module=None):
+def constants_from_enum(cls=None, module=None):
   """Decorator for an enum class that generates Gin constants from values.
 
   Generated constants have format `module.ClassName.ENUM_VALUE`. The module
@@ -1829,14 +1829,20 @@ def constants_from_enum(cls, module=None):
   Raises:
     TypeError: When applied to a non-enum class.
   """
-  if not issubclass(cls, enum.Enum):
-    raise TypeError("Class '{}' is not subclass of enum.".format(cls.__name__))
+  def decorator(cls, module=module):
+    if not issubclass(cls, enum.Enum):
+      raise TypeError(
+          "Class '{}' is not subclass of enum.".format(cls.__name__))
 
-  if module is None:
-    module = cls.__module__
-  for value in cls:
-    constant('{}.{}'.format(module, str(value)), value)
-  return cls
+    if module is None:
+      module = cls.__module__
+    for value in cls:
+      constant('{}.{}'.format(module, str(value)), value)
+    return cls
+
+  if cls is None:
+    return decorator
+  return decorator(cls)
 
 
 @register_finalize_hook

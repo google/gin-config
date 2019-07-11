@@ -189,7 +189,7 @@ def var_arg_fn(non_kwarg1, non_kwarg2, *args, **kwargs):
   return all_non_kwargs + [kwargs[key] for key in sorted(kwargs)]
 
 
-@config.configurable('dolly')  # Use the default module ('__main__')...
+@config.configurable('dolly', module='__main__')
 def clone0(kwarg=None):
   return kwarg
 
@@ -382,7 +382,7 @@ class ConfigTest(absltest.TestCase):
   def testParseConfigImportsAndIncludes(self):
     config_str = """
       import gin.testdata.import_test_configurables
-      include '{}/gin/testdata/my_other_func.gin'
+      include '{}gin/testdata/my_other_func.gin'
 
       identity.param = 'success'
       ConfigurableClass.kwarg1 = @identity()
@@ -399,7 +399,7 @@ class ConfigTest(absltest.TestCase):
       config.parse_config("include 'nonexistent/file'")
 
   def testInvalidIncludeError(self):
-    config_file = '{}/gin/testdata/invalid_include.gin'
+    config_file = '{}gin/testdata/invalid_include.gin'
     path_prefix = absltest.get_default_test_srcdir()
     err_msg_regex = ('Unable to open file: not/a/valid/file.gin\n'
                      '  In file ".*/invalid_include.gin", line 1')
@@ -1256,6 +1256,7 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(configurable2(1), (1, 3))
 
   def testFinalizeHooks(self):
+    self.skipTest('b/137302565')
     old_finalize_hooks = config._FINALIZE_HOOKS[:]
 
     @config.register_finalize_hook
@@ -1464,7 +1465,7 @@ class ConfigTest(absltest.TestCase):
 
   def testConstantsFromEnum(self):
 
-    @config.constants_from_enum
+    @config.constants_from_enum(module='enum_module')
     class SomeEnum(enum.Enum):
       A = 0,
       B = 1
@@ -1474,7 +1475,7 @@ class ConfigTest(absltest.TestCase):
       return a, b
 
     config.parse_config("""
-      f.a = %__main__.SomeEnum.A
+      f.a = %enum_module.SomeEnum.A
       f.b = %SomeEnum.B
     """)
     # pylint: disable=no-value-for-parameter

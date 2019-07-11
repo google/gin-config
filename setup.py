@@ -26,7 +26,7 @@ from os import path
 from setuptools import find_packages
 from setuptools import setup
 
-_VERSION = '0.2.1'
+_VERSION = '0.2.0'
 
 here = path.abspath(path.dirname(__file__))
 
@@ -38,7 +38,7 @@ install_requires = ['six >= 1.10.0']
 test_requirements = [
     'six >= 1.10.0',
     'absl-py >= 0.1.6',
-    'pytest >= 3.8.0',
+    'nose',
 ]
 
 
@@ -55,6 +55,7 @@ setup(
         ':python_version<"3"': ['enum34'],
     },
     tests_require=test_requirements,
+    test_suite='nose.collector',
     description='Gin-config: a lightweight configuration library for Python',
     long_description=long_description,
     url='https://github.com/google/gin-config',  # Optional
