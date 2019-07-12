@@ -21,7 +21,6 @@ https://github.com/google/gin-config
 
 """
 
-import codecs
 from os import path
 from setuptools import find_packages
 from setuptools import setup
@@ -30,9 +29,26 @@ _VERSION = '0.2.0'
 
 here = path.abspath(path.dirname(__file__))
 
-# Get the long description from the README file
-with codecs.open(path.join(here, 'README.md'), encoding='utf-8') as f:
-  long_description = f.read()
+long_description = """
+===
+Gin
+===
+
+Gin provides a lightweight configuration framework for Python, based on
+dependency injection. Functions or classes can be decorated with
+`@gin.configurable`, allowing default parameter values to be supplied from a
+config file (or passed via the command line) using a simple but powerful syntax.
+This removes the need to define and maintain configuration objects (e.g.
+protos), or write boilerplate parameter plumbing and factory code, while often
+dramatically expanding a project's flexibility and configurability.
+
+Gin is particularly well suited for machine learning experiments (e.g. using
+TensorFlow), which tend to have many parameters, often nested in complex ways.
+
+
+**Authors**: Dan Holtmann-Rice, Sergio Guadarrama, Nathan Silberman
+**Contributors**: Oscar Ramirez, Marek Fiser
+"""
 
 install_requires = ['six >= 1.10.0']
 test_requirements = [
