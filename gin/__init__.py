@@ -18,6 +18,7 @@ from gin.config import bind_parameter
 from gin.config import clear_config
 from gin.config import config_is_locked
 from gin.config import config_scope
+from gin.config import config_str
 from gin.config import configurable
 from gin.config import constant
 from gin.config import constants_from_enum

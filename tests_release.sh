@@ -25,6 +25,9 @@ run_tests() {
   virtualenv -p "$1" "${VENV_PATH}"
   source ${VENV_PATH}/bin/activate
 
+  if [[ $1 == "python2.7" ]] ; then
+    mv tests/config_py3_test.py tests/config_py3_test.bak
+  fi
 
   # TensorFlow isn't a regular dependency because there are many different pip
   # packages a user might have installed.
@@ -51,6 +54,10 @@ run_tests() {
     exit
   fi
 
+  if [[ $1 == "python2.7" ]] ; then
+    mv tests/config_py3_test.bak tests/config_py3_test.py
+  fi
+
   pip install ${WHEEL_PATH}/gin_config*.whl
 
   # Move away from repo directory so "import gin.tf" refers to the
@@ -61,11 +68,9 @@ run_tests() {
   deactivate
 }
 
-
-# Test on Python2.7
-run_tests "python2.7" $1
 # Test on Python3.5
 run_tests "python3.5" $1
 # Test on Python3.6
 run_tests "python3.6" $1
-
+# Test on Python2.7
+run_tests "python2.7" $1

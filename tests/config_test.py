@@ -86,6 +86,56 @@ var_arg_fn.non_kwarg2 = \\
               'line']}
 """
 
+_EXPECTED_CONFIG_STR = """
+import gin.testdata.import_test_configurables
+
+# Macros:
+# ==============================================================================
+pen_names = ['Pablo Neruda', 'Voltaire', 'Snoop Lion']
+super/sweet = 'lugduname'
+
+# Parameters for configurable1:
+# ==============================================================================
+configurable1.kwarg1 = \\
+    'a super duper extra double very wordy string that is just plain long'
+configurable1.kwarg3 = @configurable2
+
+# Parameters for configurable2:
+# ==============================================================================
+configurable2.non_kwarg = 'ferret == domesticated polecat'
+
+# Parameters for ConfigurableClass:
+# ==============================================================================
+ConfigurableClass.kwarg1 = 'statler'
+ConfigurableClass.kwarg2 = 'waldorf'
+
+# Parameters for test/scopes/ConfigurableClass:
+# ==============================================================================
+test/scopes/ConfigurableClass.kwarg2 = 'beaker'
+
+# Parameters for ConfigurableSubclass:
+# ==============================================================================
+ConfigurableSubclass.kwarg1 = 'waldorf'
+ConfigurableSubclass.kwarg3 = 'ferret'
+
+# Parameters for woolly.sheep.dolly:
+# ==============================================================================
+woolly.sheep.dolly.kwarg = 0
+
+# Parameters for var_arg_fn:
+# ==============================================================================
+var_arg_fn.any_name_is_ok = [%THE_ANSWER, %super/sweet, %pen_names]
+var_arg_fn.dict_value = {'success': True}
+var_arg_fn.float_value = 2.718
+var_arg_fn.non_kwarg2 = \\
+    {'long': ['nested',
+              'structure',
+              ('that', 'will', 'span'),
+              'more',
+              ('than', 1),
+              'line']}
+"""
+
 
 @config.configurable('configurable1')
 def fn1(non_kwarg, kwarg1=None, kwarg2=None, kwarg3=None):
@@ -139,7 +189,7 @@ def var_arg_fn(non_kwarg1, non_kwarg2, *args, **kwargs):
   return all_non_kwargs + [kwargs[key] for key in sorted(kwargs)]
 
 
-@config.configurable('dolly')  # Use the default module ('__main__')...
+@config.configurable('dolly', module='__main__')
 def clone0(kwarg=None):
   return kwarg
 
@@ -167,6 +217,11 @@ def clone4(kwarg=None):
 @config.configurable
 def new_object():
   return object()
+
+
+@config.configurable
+def required_as_kwarg_default(positional_arg, required_kwarg=config.REQUIRED):
+  return positional_arg, required_kwarg
 
 
 @config.configurable
@@ -275,7 +330,7 @@ config.external_configurable(ExternalAbstractConfigurableSubclass)
 class ConfigTest(absltest.TestCase):
 
   def tearDown(self):
-    config.clear_config()
+    config.clear_config(clear_constants=True)
     super(ConfigTest, self).tearDown()
 
   def testConfigurable(self):
@@ -327,7 +382,7 @@ class ConfigTest(absltest.TestCase):
   def testParseConfigImportsAndIncludes(self):
     config_str = """
       import gin.testdata.import_test_configurables
-      include '{}/gin/testdata/my_other_func.gin'
+      include '{}gin/testdata/my_other_func.gin'
 
       identity.param = 'success'
       ConfigurableClass.kwarg1 = @identity()
@@ -344,7 +399,7 @@ class ConfigTest(absltest.TestCase):
       config.parse_config("include 'nonexistent/file'")
 
   def testInvalidIncludeError(self):
-    config_file = '{}/gin/testdata/invalid_include.gin'
+    config_file = '{}gin/testdata/invalid_include.gin'
     path_prefix = absltest.get_default_test_srcdir()
     err_msg_regex = ('Unable to open file: not/a/valid/file.gin\n'
                      '  In file ".*/invalid_include.gin", line 1')
@@ -716,6 +771,10 @@ class ConfigTest(absltest.TestCase):
     obj_maker = config.external_configurable(object.__call__, 'obj_call')
     self.assertIsInstance(obj_maker(), object)
 
+  def testExternalConfigurableBuiltin(self):
+    wrapped_sum = config.external_configurable(sum)
+    self.assertEqual(wrapped_sum([1, 2, 3]), 6)
+
   def testConfigurableNamedTuple(self):
     config_str = """
       ConfigurableNamedTuple.field1 = 'field1'
@@ -804,6 +863,42 @@ class ConfigTest(absltest.TestCase):
     # See the definition of _EXPECTED_OPERATIVE_CONFIG_STR at top of file.
     expected_config_lines = _EXPECTED_OPERATIVE_CONFIG_STR.splitlines()
     self.assertEqual(applied_config_lines, expected_config_lines[1:])
+
+  def testConfigStr(self):
+    config_str = """
+      import gin.testdata.import_test_configurables
+
+      configurable1.kwarg1 = \\
+        'a super duper extra double very wordy string that is just plain long'
+      configurable1.kwarg3 = @configurable2
+      configurable2.non_kwarg = 'ferret == domesticated polecat'
+      ConfigurableClass.kwarg1 = 'statler'
+      ConfigurableClass.kwarg2 = 'waldorf'
+      ConfigurableSubclass.kwarg1 = 'waldorf'
+      ConfigurableSubclass.kwarg3 = 'ferret'
+      test/scopes/ConfigurableClass.kwarg2 = 'beaker'
+      var_arg_fn.non_kwarg2 = {
+        'long': [
+          'nested', 'structure', ('that', 'will', 'span'),
+          'more', ('than', 1), 'line',
+        ]
+      }
+      var_arg_fn.any_name_is_ok = [%THE_ANSWER, %super/sweet, %pen_names]
+      var_arg_fn.float_value = 2.718
+      var_arg_fn.dict_value = {'success': True}
+
+      super/sweet = 'lugduname'
+      pen_names = ['Pablo Neruda', 'Voltaire', 'Snoop Lion']
+      a.woolly.sheep.dolly.kwarg = 0
+    """
+    config.constant('THE_ANSWER', 42)
+    config.parse_config(config_str)
+    config.finalize()
+
+    config_lines = config.config_str().splitlines()
+    # See the definition of _EXPECTED_CONFIG_STR at top of file.
+    expected_config_lines = _EXPECTED_CONFIG_STR.splitlines()
+    self.assertEqual(config_lines, expected_config_lines[1:])
 
   def testOperativeConfigStrHandlesOverrides(self):
     config_str = """
@@ -902,7 +997,7 @@ class ConfigTest(absltest.TestCase):
       config.bind_parameter('a/b/blacklisted_configurable.blacklisted', 0)
 
   def testRequiredArgs(self):
-    with self.assertRaisesRegexp(RuntimeError, 'arg1.*arg2'):
+    with self.assertRaisesRegex(RuntimeError, 'arg1.*arg2'):
       required_args(config.REQUIRED, config.REQUIRED, 3)
 
     config.bind_parameter('scope/required_args.arg1', 1)
@@ -913,7 +1008,7 @@ class ConfigTest(absltest.TestCase):
           (1, 2, 3, 4, 5, 6))
 
   def testRequiredArgsWithVargs(self):
-    with self.assertRaisesRegexp(RuntimeError, 'arg1.*arg2'):
+    with self.assertRaisesRegex(RuntimeError, 'arg1.*arg2'):
       required_with_vargs(config.REQUIRED, config.REQUIRED, 3, 4, 5, kwarg1=6)
 
     config.bind_parameter('scope/required_with_vargs.arg1', 1)
@@ -925,11 +1020,11 @@ class ConfigTest(absltest.TestCase):
       self.assertEqual(expected, actual)
 
   def testRequiredDisallowedInVargs(self):
-    with self.assertRaisesRegexp(ValueError, 'not allowed'):
+    with self.assertRaisesRegex(ValueError, 'not allowed'):
       required_with_vargs(1, 2, 3, config.REQUIRED)
 
   def testRequiredKwargs(self):
-    with self.assertRaisesRegexp(RuntimeError, 'kwarg1.*kwarg2|kwarg2.*kwarg1'):
+    with self.assertRaisesRegex(RuntimeError, 'kwarg1.*kwarg2|kwarg2.*kwarg1'):
       required_args(1, 2, 3, kwarg1=config.REQUIRED, kwarg2=config.REQUIRED)
 
     config.bind_parameter('scope/required_args.kwarg1', 4)
@@ -941,8 +1036,8 @@ class ConfigTest(absltest.TestCase):
           (1, 2, 3, 4, 5, 6))
 
   def testRequiredArgsAndKwargs(self):
-    with self.assertRaisesRegexp(RuntimeError,
-                                 'arg2.*kwarg1.*kwarg2|arg2.*kwarg2.*kwarg1'):
+    with self.assertRaisesRegex(RuntimeError,
+                                'arg2.*kwarg1.*kwarg2|arg2.*kwarg2.*kwarg1'):
       required_args(
           1, config.REQUIRED, 3, kwarg1=config.REQUIRED, kwarg2=config.REQUIRED)
 
@@ -954,8 +1049,8 @@ class ConfigTest(absltest.TestCase):
           (1, 2, 3, 4, 5, 6))
 
   def testRequiredArgsVkwargs(self):
-    with self.assertRaisesRegexp(RuntimeError,
-                                 'arg2.*kwarg1.*kwarg6|arg2.*kwarg6.*kwarg1'):
+    with self.assertRaisesRegex(RuntimeError,
+                                'arg2.*kwarg1.*kwarg6|arg2.*kwarg6.*kwarg1'):
       required_with_vkwargs(
           1, config.REQUIRED, 3, kwarg1=config.REQUIRED, kwarg6=config.REQUIRED)
 
@@ -967,6 +1062,45 @@ class ConfigTest(absltest.TestCase):
       actual = required_with_vkwargs(
           1, config.REQUIRED, 3, kwarg1=config.REQUIRED, kwarg6=config.REQUIRED)
       self.assertEqual(expected, actual)
+
+  def testRequiredInSignature(self):
+    expected_err_regexp = (
+        r'Required bindings for `required_as_kwarg_default` not provided in '
+        r"config: \['required_kwarg'\]")
+    with self.assertRaisesRegex(RuntimeError, expected_err_regexp):
+      required_as_kwarg_default('positional')
+    # No issues if REQUIRED is also passed as by caller.
+    with self.assertRaisesRegex(RuntimeError, expected_err_regexp):
+      required_as_kwarg_default('positional', required_kwarg=config.REQUIRED)
+    # No issues if REQUIRED is also passed to different arg.
+    expected_err_regexp = r"config: \['positional_arg', 'required_kwarg'\]"
+    with self.assertRaisesRegex(RuntimeError, expected_err_regexp):
+      required_as_kwarg_default(config.REQUIRED, required_kwarg=config.REQUIRED)
+    # Everything works if all values are passed.
+    positional, kwarg = required_as_kwarg_default(
+        'positional', required_kwarg='a value')
+    # Even if not passed as a kwarg.
+    positional, kwarg = required_as_kwarg_default('positional', 'a value')
+    self.assertEqual(positional, 'positional')
+    self.assertEqual(kwarg, 'a value')
+
+  def testRequiredInSignatureBlacklistWhitelist(self):
+    expected_err_regexp = (
+        r"Argument 'arg' of 'test_required_blacklist' \('<function .+>'\) "
+        r'marked REQUIRED but blacklisted.')
+    with self.assertRaisesRegex(ValueError, expected_err_regexp):
+      config.external_configurable(
+          lambda arg=config.REQUIRED: arg,
+          'test_required_blacklist',
+          blacklist=['arg'])
+    expected_err_regexp = (
+        r"Argument 'arg' of 'test_required_whitelist' \('<function .+>'\) "
+        r'marked REQUIRED but not whitelisted.')
+    with self.assertRaisesRegex(ValueError, expected_err_regexp):
+      config.external_configurable(
+          lambda arg=config.REQUIRED, arg2=4: arg,
+          'test_required_whitelist',
+          whitelist=['arg2'])
 
   def testConfigScope(self):
     config_str = """
@@ -1122,6 +1256,7 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(configurable2(1), (1, 3))
 
   def testFinalizeHooks(self):
+    self.skipTest('b/137302565')
     old_finalize_hooks = config._FINALIZE_HOOKS[:]
 
     @config.register_finalize_hook
@@ -1314,12 +1449,23 @@ class ConfigTest(absltest.TestCase):
     with self.assertRaises(ValueError):
       # Parameter not set.
       config.query_parameter('whitelisted_configurable.other')
-    with six.assertRaisesRegex(self, ValueError, 'Invalid type'):
+    with six.assertRaisesRegex(self, TypeError, 'expected string*'):
       config.query_parameter(4)
+
+  def testQueryConstant(self):
+    config.constant('Euler', 0.5772156649)
+    self.assertEqual(0.5772156649, config.query_parameter('Euler'))
+    config.constant('OLD.ANSWER', 0)
+    config.constant('NEW.ANSWER', 10)
+    with six.assertRaisesRegex(
+        self, ValueError, 'Ambiguous constant selector*'):
+      config.query_parameter('ANSWER')
+    self.assertEqual(0, config.query_parameter('OLD.ANSWER'))
+    self.assertEqual(10, config.query_parameter('NEW.ANSWER'))
 
   def testConstantsFromEnum(self):
 
-    @config.constants_from_enum
+    @config.constants_from_enum(module='enum_module')
     class SomeEnum(enum.Enum):
       A = 0,
       B = 1
@@ -1329,7 +1475,7 @@ class ConfigTest(absltest.TestCase):
       return a, b
 
     config.parse_config("""
-      f.a = %__main__.SomeEnum.A
+      f.a = %enum_module.SomeEnum.A
       f.b = %SomeEnum.B
     """)
     # pylint: disable=no-value-for-parameter

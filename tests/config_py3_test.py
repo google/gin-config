@@ -29,6 +29,11 @@ def fn_with_kw_only_args(arg1, *, kwarg1=None):
   return arg1, kwarg1
 
 
+@config.configurable
+def fn_with_kw_only_required_arg(arg1, *, kwarg1=config.REQUIRED):
+  return arg1, kwarg1
+
+
 class ConfigTest(absltest.TestCase):
 
   def tearDown(self):
@@ -54,6 +59,23 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(kwarg, 'kwarg1')
     self.assertIn("fn_with_kw_only_args.kwarg1 = 'kwarg1'",
                   config.operative_config_str())
+
+  def testKwOnlyRequiredArgs(self):
+    expected_err_regexp = (
+        r'Required bindings for `fn_with_kw_only_args` not provided in config: '
+        r"\['kwarg1'\]")
+    with self.assertRaisesRegex(RuntimeError, expected_err_regexp):
+      fn_with_kw_only_args('positional', kwarg1=config.REQUIRED)
+
+  def testKwOnlyRequiredArgsInSignature(self):
+    expected_err_regexp = (
+        r'Required bindings for `fn_with_kw_only_required_arg` not provided in '
+        r"config: \['kwarg1'\]")
+    with self.assertRaisesRegex(RuntimeError, expected_err_regexp):
+      fn_with_kw_only_required_arg('positional')
+    arg, kwarg = fn_with_kw_only_required_arg('positional', kwarg1='a value')
+    self.assertEqual(arg, 'positional')
+    self.assertEqual(kwarg, 'a value')
 
 
 if __name__ == '__main__':
