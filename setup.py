@@ -30,9 +30,8 @@ _VERSION = '0.2.0'
 here = path.abspath(path.dirname(__file__))
 
 long_description = """
-===
-Gin
-===
+
+# Gin
 
 Gin provides a lightweight configuration framework for Python, based on
 dependency injection. Functions or classes can be decorated with
@@ -74,6 +73,7 @@ setup(
     test_suite='nose.collector',
     description='Gin-config: a lightweight configuration library for Python',
     long_description=long_description,
+    long_description_content_type='text/markdown',
     url='https://github.com/google/gin-config',  # Optional
     author='The Gin-Config Team',  # Optional
     classifiers=[  # Optional
