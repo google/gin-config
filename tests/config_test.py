@@ -257,7 +257,7 @@ configurable_external_named_tuple = config.external_configurable(
 
 @config.configurable
 class ObjectSubclassWithoutInit(object):
-  """A class that subclasses object but doesn't define it's own __init__.
+  """A class that subclasses object but doesn't define its own __init__.
 
   While there's nothing to configure in this class, it may still be desirable to
   instantiate such a class from within Gin and bind it to something else.
@@ -401,8 +401,8 @@ class ConfigTest(absltest.TestCase):
   def testInvalidIncludeError(self):
     config_file = '{}gin/testdata/invalid_include.gin'
     path_prefix = absltest.get_default_test_srcdir()
-    err_msg_regex = ('Unable to open file: not/a/valid/file.gin\n'
-                     '  In file ".*/invalid_include.gin", line 1')
+    err_msg_regex = ('Unable to open file: not/a/valid/file.gin. '
+                     'Searched config paths:')
     with six.assertRaisesRegex(self, IOError, err_msg_regex):
       config.parse_config_file(config_file.format(path_prefix))
 
@@ -1515,6 +1515,15 @@ class ConfigTest(absltest.TestCase):
         A = 0,
         B = 1
 
+  def testAddConfigPath(self):
+    gin_file_path = (
+        'gin/testdata/test_gin_file_location_prefix.gin')
+    with self.assertRaises(IOError):
+      config.parse_config_files_and_bindings(
+          [gin_file_path], None)
+    config.add_config_file_search_path(absltest.get_default_test_srcdir())
+    config.parse_config_files_and_bindings(
+        [gin_file_path], None)
 
 if __name__ == '__main__':
   absltest.main()

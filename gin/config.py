@@ -147,6 +147,10 @@ _FILE_READERS = [(open, os.path.isfile)]
 # Maintains a cache of argspecs for functions.
 _ARG_SPEC_CACHE = {}
 
+# List of location prefixes. Similar to PATH var in unix to be used to search
+# for files with those prefixes.
+_LOCATION_PREFIXES = ['']
+
 # Value to represent required parameters.
 REQUIRED = object()
 
@@ -1529,6 +1533,11 @@ def register_file_reader(*args):
     raise TypeError(err_str.format(len(args)))
 
 
+def add_config_file_search_path(location_prefix):
+  """Adds a path that will be searched for config files by parse_config_file."""
+  _LOCATION_PREFIXES.append(location_prefix)
+
+
 def parse_config_file(config_file, skip_unknown=False):
   """Parse a Gin config file.
 
@@ -1542,12 +1551,16 @@ def parse_config_file(config_file, skip_unknown=False):
   Raises:
     IOError: If `config_file` cannot be read using any register file reader.
   """
-  for reader, existence_check in _FILE_READERS:
-    if existence_check(config_file):
-      with reader(config_file) as f:
-        parse_config(f, skip_unknown=skip_unknown)
-        return
-  raise IOError('Unable to open file: {}'.format(config_file))
+  prefixes = _LOCATION_PREFIXES if not os.path.isabs(config_file) else ['']
+  for location_prefix in prefixes:
+    config_file_with_prefix = os.path.join(location_prefix, config_file)
+    for reader, existence_check in _FILE_READERS:
+      if existence_check(config_file_with_prefix):
+        with reader(config_file_with_prefix) as f:
+          parse_config(f, skip_unknown=skip_unknown)
+          return
+  err_str = 'Unable to open file: {}. Searched config paths: {}.'
+  raise IOError(err_str.format(config_file, prefixes))
 
 
 def parse_config_files_and_bindings(config_files,
