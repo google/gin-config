@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """Init file for Gin."""
+from gin.config import add_config_file_search_path
 from gin.config import bind_parameter
 from gin.config import clear_config
 from gin.config import config_is_locked
