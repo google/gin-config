@@ -21,6 +21,7 @@ import abc
 import collections
 import inspect
 import io
+import threading
 
 from absl.testing import absltest
 
@@ -1185,6 +1186,51 @@ class ConfigTest(absltest.TestCase):
       value = ConfigurableClass()
     self.assertEqual(value.kwarg1(), ('no_scope_non_kwarg', 'implicit_scope'))
     self.assertEqual(value.kwarg2, ('explicit_non_kwarg', 'explicit_scope'))
+
+  def testScopingThreadSafety(self):
+
+    # pylint: disable=unused-variable
+    @config.configurable(blacklist=['expected_value'])
+    def sanity_check(expected_value, config_value=None):
+      return expected_value == config_value
+
+    # pylint: enable=unused-variable
+
+    def validate_test_fn(output_list, index, test_fn):
+      for _ in range(10000):
+        output_list[index] = output_list[index] and test_fn(index)
+
+    @config.configurable
+    def run_threaded_test_fns(test_fns):
+      outputs = [True] * len(test_fns)
+      threads = []
+      for i, test_fn in enumerate(test_fns):
+        args = (outputs, i, test_fn)
+        thread = threading.Thread(target=validate_test_fn, args=args)
+        threads.append(thread)
+        thread.start()
+
+      for thread in threads:
+        thread.join()
+
+      return outputs
+
+    config_str = """
+      scope0/sanity_check.config_value = 0
+      scope1/sanity_check.config_value = 1
+      scope2/sanity_check.config_value = 2
+      scope3/sanity_check.config_value = 3
+
+      run_threaded_test_fns.test_fns = [
+          @scope0/sanity_check,
+          @scope1/sanity_check,
+          @scope2/sanity_check,
+          @scope3/sanity_check,
+      ]
+    """
+    config.parse_config(config_str)
+    outputs = run_threaded_test_fns(config.REQUIRED)
+    self.assertTrue(all(outputs))
 
   def testIterateReferences(self):
     config_str = """

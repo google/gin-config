@@ -93,6 +93,7 @@ import inspect
 import logging
 import os
 import pprint
+import threading
 
 import enum
 
@@ -101,6 +102,43 @@ from gin import selector_map
 from gin import utils
 
 import six
+
+
+class _ScopeManager(threading.local):
+  """Manages currently active config scopes.
+
+  This ensures thread safety of config scope management by subclassing
+  `threading.local`. Scopes are tracked as a stack, where elements in the
+  stack are lists of the currently active scope names.
+  """
+
+  def _maybe_init(self):
+    if not hasattr(self, '_active_scopes'):
+      self._active_scopes = [[]]
+
+  @property
+  def active_scopes(self):
+    self._maybe_init()
+    return self._active_scopes[:]
+
+  @property
+  def current_scope(self):
+    self._maybe_init()
+    return self._active_scopes[-1][:]  # Slice to get copy.
+
+  def enter_scope(self, scope):
+    """Enters the given scope, updating the list of active scopes.
+
+    Args:
+      scope: A list of active scope names, ordered from outermost to innermost.
+    """
+    self._maybe_init()
+    self._active_scopes.append(scope)
+
+  def exit_scope(self):
+    """Exits the most recently entered scope."""
+    self._maybe_init()
+    self._active_scopes.pop()
 
 
 # Maintains the registry of configurable functions and classes.
@@ -117,10 +155,10 @@ _IMPORTED_MODULES = set()
 # Maps `(scope, selector)` tuples to all configurable parameter values used
 # during program execution (including default argument values).
 _OPERATIVE_CONFIG = {}
+_OPERATIVE_CONFIG_LOCK = threading.Lock()
 
-# Keeps track of currently active config scopes, as a stack of lists of config
-# scope names.
-_ACTIVE_SCOPES = [[]]
+# Keeps track of currently active config scopes.
+_SCOPE_MANAGER = _ScopeManager()
 
 # Keeps track of hooks to run when the Gin config is finalized.
 _FINALIZE_HOOKS = []
@@ -786,7 +824,7 @@ def _order_by_signature(fn, arg_names):
 
 
 def current_scope():
-  return _ACTIVE_SCOPES[-1][:]  # Slice to get copy.
+  return _SCOPE_MANAGER.current_scope
 
 
 def current_scope_str():
@@ -865,7 +903,7 @@ def config_scope(name_or_scope):
 
     # Append new_scope first. It will be popped in the finally block if an
     # exception is raised below.
-    _ACTIVE_SCOPES.append(new_scope)
+    _SCOPE_MANAGER.enter_scope(new_scope)
 
     scopes_are_valid = map(config_parser.MODULE_RE.match, new_scope)
     if not valid_value or not all(scopes_are_valid):
@@ -874,7 +912,7 @@ def config_scope(name_or_scope):
 
     yield new_scope
   finally:
-    _ACTIVE_SCOPES.pop()
+    _SCOPE_MANAGER.exit_scope()
 
 
 def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
@@ -962,8 +1000,9 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
     # object has supplied a different set of arguments. By doing an update, a
     # Gin-supplied or default value will be present if it was used (not
     # overridden by the caller) at least once.
-    op_cfg = _OPERATIVE_CONFIG.setdefault((scope_str, selector), {})
-    op_cfg.update(operative_parameter_values)
+    with _OPERATIVE_CONFIG_LOCK:
+      op_cfg = _OPERATIVE_CONFIG.setdefault((scope_str, selector), {})
+      op_cfg.update(operative_parameter_values)
 
     # We call deepcopy for two reasons: First, to prevent the called function
     # from modifying any of the values in `_CONFIG` through references passed in
