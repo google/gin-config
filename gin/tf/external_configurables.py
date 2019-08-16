@@ -141,6 +141,10 @@ config.external_configurable(tf.random.stateless_truncated_normal,
 config.external_configurable(tf.random.stateless_uniform,
                              'tf.random.stateless_uniform')
 
+# Distribution strategies.
+config.external_configurable(tf.contrib.distribute.MirroredStrategy,
+                             module='tf.contrib.distribute')
+
 # Constants
 
 config.constant('tf.float16', tf.float16)
