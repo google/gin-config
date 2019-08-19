@@ -195,6 +195,14 @@ class GinConfigSaverHookTest(tf.test.TestCase):
     summary = summary_writer.summaries[0][0]
     self.assertEqual(summary.value[0].tag, 'gin/operative_config')
 
+  def testGinConfigSaverHookIncludeStepFalse(self):
+    output_dir, _ = self.run_log_config_hook_maybe_with_summary(
+        global_step_value=7, include_step_in_filename=False)
+    expected_file_name = 'operative_config.gin'
+    with tf.io.gfile.GFile(os.path.join(output_dir, expected_file_name)) as f:
+      operative_config_str = f.read()
+    self.assertEqual(operative_config_str, config.operative_config_str())
+
 
 class UtilsTest(tf.test.TestCase):
 

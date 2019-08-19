@@ -57,7 +57,8 @@ class GinConfigSaverHook(tf.estimator.SessionRunHook):
                output_dir,
                base_name='operative_config',
                summarize_config=True,
-               summary_writer=None):
+               summary_writer=None,
+               include_step_in_filename=True):
     """Construct the GinConfigSaverHook.
 
     Args:
@@ -73,11 +74,16 @@ class GinConfigSaverHook(tf.estimator.SessionRunHook):
         summaries. If `None` (default), a FileWriter object for `output_dir`
         will be created/retrieved by the tf.summary.FileWriterCache associated
         with `output_dir` in `after_create_session`.
+      include_step_in_filename: A bool indicating whether to include the global
+        step when writing out the operative config file. When True, the filename
+        will be {base_name}-{global_step}.gin; when False the filename will be
+        {base_name}.gin.
     """
     self._output_dir = output_dir
     self._base_name = base_name
     self._summarize_config = summarize_config
     self._summary_writer = summary_writer
+    self._include_step_in_filename = include_step_in_filename
 
   def _markdownify_operative_config_str(self, string):
     """Convert an operative config string to markdown format."""
@@ -115,7 +121,10 @@ class GinConfigSaverHook(tf.estimator.SessionRunHook):
       global_step = tf.compat.v1.train.get_global_step()
       if global_step is not None:
         global_step_val = session.run(global_step)
-    filename = '%s-%s.gin' % (self._base_name, global_step_val)
+    if self._include_step_in_filename:
+      filename = '%s-%s.gin' % (self._base_name, global_step_val)
+    else:
+      filename = '%s.gin' % self._base_name
     config_path = os.path.join(self._output_dir, filename)
     with tf.io.gfile.GFile(config_path, 'w') as f:
       f.write(config_str)
