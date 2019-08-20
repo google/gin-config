@@ -103,6 +103,57 @@ from gin import utils
 import six
 
 
+class GinState(object):
+  def __init__(self, copy_state=False):
+    if copy_state:
+      self._config = copy.deepcopy(_CONFIG)
+      self._imported_modules = copy.deepcopy(_IMPORTED_MODULES)
+      self._operative_config = copy.deepcopy(_OPERATIVE_CONFIG)
+      self._singletons = copy.deepcopy(_SINGLETONS)
+      self._config_is_locked = _CONFIG_IS_LOCKED
+      self._interactive_mode = _INTERACTIVE_MODE
+    else:
+      self._config = {}
+      self._imported_modules = set()
+      self._operative_config = {}
+      self._singletons = {}
+      self._config_is_locked = False
+      self._interactive_mode = False
+  
+  _stack = []
+  
+  def _open(self):
+    global _CONFIG
+    global _IMPORTED_MODULES
+    global _OPERATIVE_CONFIG
+    global _SINGLETONS
+    global _CONFIG_IS_LOCKED
+    global _INTERACTIVE_MODE
+    _CONFIG = self._config
+    _IMPORTED_MODULES = self._imported_modules
+    _SINGLETONS = self._singletons
+    _OPERATIVE_CONFIG = self._operative_config
+    _CONFIG_IS_LOCKED = self._config_is_locked
+    _INTERACTIVE_MODE = self._interactive_mode
+    return self
+  
+  def _leave(self):
+    self._config_is_locked = _CONFIG_IS_LOCKED
+    self._interactive_mode = _INTERACTIVE_MODE
+  
+  def __enter__(self):
+    GinState._stack[-1]._leave()
+    self._open()
+    GinState._stack.append(self)
+    return self
+  
+  def __exit__(self, type, value, traceback):
+    top = GinState._stack.pop()
+    self._leave()
+    assert(top is self)
+    GinState._stack[-1]._open()
+
+
 # Maintains the registry of configurable functions and classes.
 _REGISTRY = selector_map.SelectorMap()
 
@@ -149,6 +200,8 @@ _ARG_SPEC_CACHE = {}
 
 # Value to represent required parameters.
 REQUIRED = object()
+
+GinState._stack.append(GinState()._open())  # ensure the stack is never empty
 
 
 def _find_class_construction_fn(cls):
