@@ -1491,7 +1491,46 @@ def parse_config(bindings, skip_unknown=False):
       raise AssertionError('Unrecognized statement type {}.'.format(statement))
 
 
-def register_file_reader(*args):
+@contextlib.contextmanager
+def _change_dir_context(directory):
+  """Change directory for the duration of the context block."""
+  orig_dir = os.getcwd()
+  os.chdir(directory)
+  try:
+    yield
+  finally:
+    os.chdir(orig_dir)
+
+
+@contextlib.contextmanager
+def _open_from_directory(path):
+  """Change directory to the containing folder while the file remains open.
+  
+  Allows for relative includes. See `enable_relative_includes`.
+  """
+  path = os.path.realpath(path)
+  folder = os.path.dirname(path)
+  with _change_dir_context(folder):
+    with open(path, 'r') as fp:
+      yield fp
+
+
+def enable_relative_includes(highest_priority=False):
+  """Allow includes to be relative to the directory containing the config file.
+
+  Args:
+    highest_priority: if True, relative includes will take preferences over
+      default behaviour.
+
+  Returns:
+    None
+  """
+  register_file_reader(_open_from_directory,
+                       os.path.isfile,
+                       highest_priority=highest_priority)
+
+
+def register_file_reader(*args, highest_priority=False):
   """Register a file reader for use in parse_config_file.
 
   Registered file readers will be used to try reading files passed to
@@ -1511,14 +1550,37 @@ def register_file_reader(*args):
         provide a file-like object, similar to Python's built-in `open`.
       - is_readable_fn: A function taking the file path and returning a boolean
         indicating whether the file can be read by `file_reader_fn`.
+      - highest_priority: if True, this reader is tried before readers already
+        registered. Note if other readers are subsequently registered with
+        `highest_priority=True`, they will supersede earlier ones. Calling this
+        with an already registered reader and highest_priority=True will move
+        it to highest priority.
 
   Returns:
     `None`, or when used as a decorator, a function that will perform the
     registration using the supplied readability predicate.
   """
+
   def do_registration(file_reader_fn, is_readable_fn):
-    if file_reader_fn not in list(zip(*_FILE_READERS))[0]:
-      _FILE_READERS.append((file_reader_fn, is_readable_fn))
+    try:
+      index = [fr[0] for fr in _FILE_READERS].index(file_reader_fn)
+      if highest_priority:
+        del _FILE_READERS[index]
+        # we'll add it back later
+      else:
+        # already present and not highest priority
+        return file_reader_fn
+    except ValueError:
+      # not present
+      pass
+
+    # definitely not present now
+    element = (file_reader_fn, is_readable_fn)
+    if highest_priority:
+      _FILE_READERS.insert(0, element)
+    else:
+      _FILE_READERS.append(element)
+    return file_reader_fn
 
   if len(args) == 1:  # It's a decorator.
     return functools.partial(do_registration, is_readable_fn=args[0])
