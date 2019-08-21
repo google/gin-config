@@ -5,11 +5,23 @@ from __future__ import print_function
 import os
 from absl.testing import absltest
 from gin import config
+import contextlib
 
 HERE = os.path.realpath(os.path.dirname(__file__))
 SUBDIR = os.path.join(HERE, 'subdir')
 MAIN = os.path.join(SUBDIR, 'main.gin')
-os.environ['SUBDIR'] = SUBDIR
+
+
+@contextlib.contextmanager
+def temp_environment_variables(**kwargs):
+  backup = {k: os.environ.get(k) for k in kwargs}
+  os.environ.update(kwargs)
+  yield
+  for k, v in backup.items():
+    if v is None:
+      del os.environ[k]
+    else:
+      os.environ[k] = v
 
 
 @config.configurable
@@ -25,12 +37,13 @@ class FileReaderTest(absltest.TestCase):
     super(FileReaderTest, self).tearDown()
 
   def test_vars_in_includes(self):
-    path = '$SUBDIR/ambiguous.gin'
-    with self.assertRaises(OSError):
+    with temp_environment_variables(SUBDIR=SUBDIR):
+      path = '$SUBDIR/ambiguous.gin'
+      with self.assertRaises(OSError):
+        config.parse_config_file(path)
+      config.enable_variable_expansion()
       config.parse_config_file(path)
-    config.enable_vars_in_includes()
-    config.parse_config_file(path)
-    self.assertEqual(config.query_parameter('f.x'), 'subdir')
+      self.assertEqual(config.query_parameter('f.x'), 'subdir')
 
   def test_relative_includes_low_priority(self):
     config.enable_relative_includes(highest_priority=False)
