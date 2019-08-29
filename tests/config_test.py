@@ -21,6 +21,7 @@ import abc
 import collections
 import inspect
 import io
+import os
 import threading
 
 from absl.testing import absltest
@@ -1562,14 +1563,15 @@ class ConfigTest(absltest.TestCase):
         B = 1
 
   def testAddConfigPath(self):
-    gin_file_path = (
-        'gin/testdata/test_gin_file_location_prefix.gin')
+    gin_file = 'test_gin_file_location_prefix.gin'
     with self.assertRaises(IOError):
-      config.parse_config_files_and_bindings(
-          [gin_file_path], None)
-    config.add_config_file_search_path(absltest.get_default_test_srcdir())
-    config.parse_config_files_and_bindings(
-        [gin_file_path], None)
+      config.parse_config_files_and_bindings([gin_file], None)
+    test_srcdir = absltest.get_default_test_srcdir()
+    relative_testdata_path = 'gin/testdata'
+    absolute_testdata_path = os.path.join(test_srcdir, relative_testdata_path)
+    config.add_config_file_search_path(absolute_testdata_path)
+    config.parse_config_files_and_bindings([gin_file], None)
+
 
 if __name__ == '__main__':
   absltest.main()
