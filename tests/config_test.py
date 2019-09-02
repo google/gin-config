@@ -912,9 +912,9 @@ class ConfigTest(absltest.TestCase):
     # Initially, since ConfigurableClass had all of its parameters overwritten,
     # none of them are logged to the operative config.
     selector = config._REGISTRY.get_match('ConfigurableClass').selector
-    self.assertEqual(config._OPERATIVE_CONFIG['', selector], {})
+    self.assertEqual(config.get_default_state()._operative_config['', selector], {})
     selector = config._REGISTRY.get_match('ConfigurableSubclass').selector
-    self.assertEqual(config._OPERATIVE_CONFIG['', selector],
+    self.assertEqual(config.get_default_state()._operative_config['', selector],
                      {'kwarg1': 'sub_kwarg1',
                       'kwarg2': None,
                       'kwarg3': None})
@@ -922,12 +922,12 @@ class ConfigTest(absltest.TestCase):
     ConfigurableClass()
     # Now that it's been called, we can see its parameters.
     selector = config._REGISTRY.get_match('ConfigurableClass').selector
-    self.assertEqual(config._OPERATIVE_CONFIG['', selector],
+    self.assertEqual(config.get_default_state()._operative_config['', selector],
                      {'kwarg1': 'base_kwarg1', 'kwarg2': 'base_kwarg2'})
 
     ConfigurableSubclass()
     # And they're still around after another call to the subclass.
-    self.assertEqual(config._OPERATIVE_CONFIG['', selector],
+    self.assertEqual(config.get_default_state()._operative_config['', selector],
                      {'kwarg1': 'base_kwarg1', 'kwarg2': 'base_kwarg2'})
 
   def testParsingOperativeConfigStrIsIdempotent(self):
@@ -1197,7 +1197,8 @@ class ConfigTest(absltest.TestCase):
       }
     """
     config.parse_config(config_str)
-    macros = list(config.iterate_references(config._CONFIG, to=config.macro))
+    macros = list(config.iterate_references(
+      config.get_default_state()._config, to=config.macro))
     self.assertLen(macros, 3)
 
   def testInteractiveMode(self):

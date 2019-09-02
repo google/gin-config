@@ -103,15 +103,86 @@ from gin import utils
 import six
 
 
-class GinState(object):
-  def __init__(self, copy_state=False):
-    if copy_state:
-      self._config = copy.deepcopy(_CONFIG)
-      self._imported_modules = copy.deepcopy(_IMPORTED_MODULES)
-      self._operative_config = copy.deepcopy(_OPERATIVE_CONFIG)
-      self._singletons = copy.deepcopy(_SINGLETONS)
-      self._config_is_locked = _CONFIG_IS_LOCKED
-      self._interactive_mode = _INTERACTIVE_MODE
+class ConfigState(object):
+  """
+  Class for encapsulating the current configuration state.
+
+  While it can be used directly, this is intended to be used predominantly
+  as a context manager, e.g.
+
+  ```python
+  with ConfigState() as state:
+    parse_config(bindings)
+    operative_config = operative_config_str()
+  
+  state.operative_config_str()  # same as operative_config
+  operative_config_str()        # empty, because the context block has ended
+  ```
+
+  Note there is always at least one active state. This base state should be
+  sufficient for a large proportion of cases.
+
+  The following are managed by the `ConfigState`:
+    * imported modules
+    * config (from `parse_config` etc.)
+    * operative config
+    * singletons
+    * locked/interactive state
+
+  The following are NOT considered part of the `ConfigState`:
+    * constants*
+    * configurables (though the bindings associated with them are)
+    * active scopes
+    * finalize hooks
+    * readers
+  
+  so e.g. after clearing or opening a new state context, you will not need to
+  re-import files with `@configurable` annotations repeat 
+  `external_configurable` call.
+
+  * constants can be cleared using `clear_config` and `clear_constants=True`.
+  """
+
+  # Properties:
+
+  # _imported_modules
+  #   A set of module names that were dynamically imported via config files.
+
+  # _config
+  #   Maps tuples of `(scope, selector)` to associated parameter values.
+
+  #   specifies the current "configuration" set through `bind_parameter` or
+  #   `parse_config`, but doesn't include any functions' default argument values.
+
+  # _operative_config
+  #   Maps `(scope, selector)` tuples to all configurable parameter used.
+
+  #   Only those used thus far during execution (including default argument
+  #   values) are include.
+
+  # _singletons
+  #   Dict of singletons created via the singleton configurable.
+
+  def __init__(self, inherit_from=None):
+    """
+    Args:
+      inherit_from: optional ConfigState instance, or "default". If provided,
+        state parameters are initialized as copies from this state. "default"
+        uses the current default state.
+    """
+    if inherit_from is not None:
+      if inherit_from == 'default':
+        inherit_from = get_default_state()
+      elif not isinstance(inherit_from, ConfigState):
+        raise ValueError(
+          '`inherit_from` must be a ConfigState instance, got {}'.format(
+            inherit_from))
+      self._config = copy.deepcopy(inherit_from._config)
+      self._imported_modules = copy.deepcopy(inherit_from._imported_modules)
+      self._operative_config = copy.deepcopy(inherit_from._operative_config)
+      self._singletons = copy.deepcopy(inherit_from._singletons)
+      self._config_is_locked = inherit_from._config_is_locked
+      self._interactive_mode = inherit_from._interactive_mode
     else:
       self._config = {}
       self._imported_modules = set()
@@ -119,55 +190,558 @@ class GinState(object):
       self._singletons = {}
       self._config_is_locked = False
       self._interactive_mode = False
-  
+
+  def copy(self):
+    return ConfigState(inherit_from=self)
+
   _stack = []
-  
-  def _open(self):
-    global _CONFIG
-    global _IMPORTED_MODULES
-    global _OPERATIVE_CONFIG
-    global _SINGLETONS
-    global _CONFIG_IS_LOCKED
-    global _INTERACTIVE_MODE
-    _CONFIG = self._config
-    _IMPORTED_MODULES = self._imported_modules
-    _SINGLETONS = self._singletons
-    _OPERATIVE_CONFIG = self._operative_config
-    _CONFIG_IS_LOCKED = self._config_is_locked
-    _INTERACTIVE_MODE = self._interactive_mode
-    return self
-  
-  def _leave(self):
-    self._config_is_locked = _CONFIG_IS_LOCKED
-    self._interactive_mode = _INTERACTIVE_MODE
-  
+
+  @staticmethod
+  def get_default_state():
+    """Get the currently active `ConfigState` instance."""
+    return ConfigState._stack[-1]
+
   def __enter__(self):
-    GinState._stack[-1]._leave()
-    self._open()
-    GinState._stack.append(self)
+    ConfigState._stack.append(self)
     return self
-  
+
   def __exit__(self, type, value, traceback):
-    top = GinState._stack.pop()
-    self._leave()
+    top = ConfigState._stack.pop()
     assert(top is self)
-    GinState._stack[-1]._open()
+
+  @property
+  def config_is_locked(self):
+    return self._config_is_locked
+
+  @property
+  def is_interactive_mode(self):
+    """
+    Whether or not interactive mode is enabled.
+
+    Redefining a configurable is not an error when enabled.
+    """
+    return self._interactive_mode
+
+  def bind_parameter(self, binding_key, value):
+    """Binds the parameter value specified by `binding_key` to `value`.
+
+    The `binding_key` argument should either be a string of the form
+    `maybe/scope/optional.module.names.configurable_name.parameter_name`, or a
+    list or tuple of `(scope, selector, parameter_name)`, where `selector`
+    corresponds to `optional.module.names.configurable_name`. Once this function
+    has been called, subsequent calls (in the specified scope) to the specified
+    configurable function will have `value` supplied to their `parameter_name`
+    parameter.
+
+    Example:
+
+        @configurable('fully_connected_network')
+        def network_fn(num_layers=5, units_per_layer=1024):
+          ...
+
+        def main(_):
+          config.bind_parameter('fully_connected_network.num_layers', 3)
+          network_fn()  # Called with num_layers == 3, not the default of 5.
+
+    Args:
+      binding_key: The parameter whose value should be set. This can either be a
+        string, or a tuple of the form `(scope, selector, parameter)`.
+      value: The desired value.
+
+    Raises:
+      RuntimeError: If the config is locked.
+      ValueError: If no function can be found matching the configurable name
+        specified by `binding_key`, or if the specified parameter name is
+        blacklisted or not in the function's whitelist (if present).
+    """
+    if self._config_is_locked:
+      raise RuntimeError('Attempted to modify locked Gin config.')
+
+    pbk = ParsedBindingKey(binding_key)
+    fn_dict = self._config.setdefault(pbk.config_key, {})
+    fn_dict[pbk.arg_name] = value
+
+
+  def query_parameter(self, binding_key):
+    """Returns the currently bound value to the specified `binding_key`.
+
+    The `binding_key` argument should look like
+    'maybe/some/scope/maybe.modules.configurable_name.parameter_name'. Note that
+    this will not include default parameters.
+
+    Args:
+      binding_key: The parameter whose value should be queried.
+
+    Returns:
+      The value bound to the configurable/parameter combination given in
+      `binding_key`.
+
+    Raises:
+      ValueError: If no function can be found matching the configurable name
+        specified by `biding_key`, or if the specified parameter name is
+        blacklisted or not in the function's whitelist (if present) or if there is
+        no value bound for the queried parameter or configurable.
+    """
+    if config_parser.MODULE_RE.match(binding_key):
+      matching_selectors = _CONSTANTS.matching_selectors(binding_key)
+      if len(matching_selectors) == 1:
+        return _CONSTANTS[matching_selectors[0]]
+      elif len(matching_selectors) > 1:
+        err_str = "Ambiguous constant selector '{}', matches {}."
+        raise ValueError(err_str.format(binding_key, matching_selectors))
+    pbk = ParsedBindingKey(binding_key)
+    if pbk.config_key not in self._config:
+      err_str = "Configurable '{}' has no bound parameters."
+      raise ValueError(err_str.format(pbk.given_selector))
+    if pbk.arg_name not in self._config[pbk.config_key]:
+      err_str = "Configurable '{}' has no value bound for parameter '{}'."
+      raise ValueError(err_str.format(pbk.given_selector, pbk.arg_name))
+    return self._config[pbk.config_key][pbk.arg_name]
+
+  def singleton_value(self, key, constructor=None):
+    if key not in self._singletons:
+      if not constructor:
+        err_str = "No singleton found for key '{}', and no constructor was given."
+        raise ValueError(err_str.format(key))
+      if not callable(constructor):
+        err_str = "The constructor for singleton '{}' is not callable."
+        raise ValueError(err_str.format(key))
+      self._singletons[key] = constructor()
+    return self._singletons[key]
+
+  def singleton(self, constructor):
+    return self.singleton_value(current_scope_str(), constructor)
+
+  def validate_reference(
+      self, ref, require_bindings=True, require_evaluation=False):
+    if require_bindings and ref.config_key not in self._config:
+      err_str = "No bindings specified for '{}'."
+      raise ValueError(err_str.format(ref.scoped_selector))
+
+    if require_evaluation and not ref.evaluate:
+      err_str = "Reference '{}' must be evaluated (add '()')."
+      raise ValueError(err_str.format(ref))
+
+  def clear_config(self, clear_constants=False):
+    """Clears the default configuration.
+
+    This clears any parameter values set by `bind_parameter` or `parse_config`, as
+    well as the set of dynamically imported modules. It does not remove any
+    configurable functions or classes from the registry of configurables.
+
+    Args:
+      clear_constants: Whether to clear constants created by `constant`. Defaults
+        to False.
+    """
+    self._config_is_locked = False
+    self._config.clear()
+    self._singletons.clear()
+    if clear_constants:
+      _CONSTANTS.clear()
+    else:
+      saved_constants = _CONSTANTS.copy()
+      _CONSTANTS.clear()  # Clear then redefine constants (re-adding bindings).
+      for name, value in six.iteritems(saved_constants):
+        constant(name, value)
+    self._imported_modules.clear()
+    self._operative_config.clear()
+
+  def operative_config_str(self, max_line_length=80, continuation_indent=4):
+    """Retrieve the "operative" configuration as a config string.
+
+    The operative configuration consists of all parameter values used by
+    configurable functions that are actually called during execution of the
+    current program. Parameters associated with configurable functions that are
+    not called (and so can have no effect on program execution) won't be included.
+
+    The goal of the function is to return a config that captures the full set of
+    relevant configurable "hyperparameters" used by a program. As such, the
+    returned configuration will include the default values of arguments from
+    configurable functions (as long as the arguments aren't blacklisted or missing
+    from a supplied whitelist), as well as any parameter values overridden via
+    `bind_parameter` or through `parse_config`.
+
+    Any parameters that can't be represented as literals (capable of being parsed
+    by `parse_config`) are excluded. The resulting config string is sorted
+    lexicographically and grouped by configurable name.
+
+    Args:
+      max_line_length: A (soft) constraint on the maximum length of a line in the
+        formatted string. Large nested structures will be split across lines, but
+        e.g. long strings won't be split into a concatenation of shorter strings.
+      continuation_indent: The indentation for continued lines.
+
+    Returns:
+      A config string capturing all parameter values set in the current program.
+    """
+    return _config_str(
+        self._operative_config, max_line_length,
+        continuation_indent)
+
+  def config_str(self, max_line_length=80, continuation_indent=4):
+    """Retrieve the interpreted configuration as a config string.
+
+    This is not the _operative configuration_, in that it includes parameter
+    values which are unused by by the program.
+
+    Args:
+      max_line_length: A (soft) constraint on the maximum length of a line in the
+        formatted string. Large nested structures will be split across lines, but
+        e.g. long strings won't be split into a concatenation of shorter strings.
+      continuation_indent: The indentation for continued lines.
+
+    Returns:
+      A config string capturing all parameter values used by the current program.
+    """
+    return _config_str(
+        self._config, max_line_length,
+        continuation_indent)
+
+  def parse_config(self, bindings, skip_unknown=False):
+    """Parse a file, string, or list of strings containing parameter bindings.
+
+    Parses parameter binding strings to set up the global configuration.  Once
+    `parse_config` has been called, any calls to configurable functions will have
+    parameter values set according to the values specified by the parameter
+    bindings in `bindings`.
+
+    An individual parameter binding has the format
+
+        maybe/some/scopes/configurable_name.parameter_name = value
+
+    Multiple binding strings can be passed either in the form of a file-like
+    object supporting the `readline` method, a single string with each individual
+    parameter binding separated by a newline, or as a list of individual parameter
+    binding strings.
+
+    Any Python literal (lists, tuples, dicts, strings, etc.) is acceptable to the
+    right of the equals sign, and follows standard Python rules for line
+    continuation. Additionally, a value starting with '@' is interpreted as a
+    (possibly scoped) reference to another configurable function, in which case
+    this value is replaced by a reference to that function. If the value
+    furthermore ends in `()` (e.g., `@configurable_name()`), then the value
+    returned when calling the function is used (it will be called *just before*
+    the function consuming the output is called).
+
+    See the module documentation for a more detailed description of scoping
+    mechanisms and a complete example.
+
+    Reading from a file could be done as follows:
+
+        with open('/path/to/file.config') as bindings:
+          gin.parse_config(bindings)
+
+    Passing a newline separated string of parameter bindings might look like:
+
+        bindings = '''
+            my_class.param_one = 'asdf'
+            my_class_param_two = 9.7
+        '''
+        gin.parse_config(bindings)
+
+    Alternatively, one can declare a list of parameter bindings and pass it in:
+
+        bindings = [
+            'my_class.param_one = "asdf"',
+            'my_class.param_two = 9.7',
+        ]
+        gin.parse_config(bindings)
+
+    Can skip unknown configurables. For example, if no module containing a
+    'training' configurable was imported, errors can be avoided by specifying
+    `skip_unknown=True`:
+
+        bindings = [
+            'my_class.param_one = "asdf"',
+            'my_class.param_two = 9.7',
+            'training.learning_rate = 0.1',
+        ]
+        gin.parse_config(bindings, skip_unknown=True)
+
+    Args:
+      bindings: A file-like object supporting the readline method, a newline
+        separated string of parameter bindings, or a list of individual parameter
+        binding strings.
+      skip_unknown: A boolean indicating whether unknown configurables and imports
+        should be skipped (instead of causing an error). Configurable references
+        to unknown configurables will cause errors if they are present in a
+        binding that is not itself skipped due to an unknown configurable. This
+        can also be a list of configurable names: any unknown configurables that
+        do not match an item in the list will still cause errors. Note that
+        bindings for known configurables will always be parsed.
+    """
+    if isinstance(bindings, (list, tuple)):
+      bindings = '\n'.join(bindings)
+
+    _validate_skip_unknown(skip_unknown)
+    if isinstance(skip_unknown, (list, tuple)):
+      skip_unknown = set(skip_unknown)
+
+    parser = config_parser.ConfigParser(bindings, ParserDelegate(skip_unknown))
+    for statement in parser:
+      if isinstance(statement, config_parser.BindingStatement):
+        scope, selector, arg_name, value, location = statement
+        if not arg_name:
+          macro_name = '{}/{}'.format(scope, selector) if scope else selector
+          with utils.try_with_location(location):
+            self.bind_parameter((macro_name, 'gin.macro', 'value'), value)
+          continue
+        if not _should_skip(selector, skip_unknown):
+          with utils.try_with_location(location):
+            self.bind_parameter((scope, selector, arg_name), value)
+      elif isinstance(statement, config_parser.ImportStatement):
+        if skip_unknown:
+          try:
+            __import__(statement.module)
+            self._imported_modules.add(statement.module)
+          except ImportError:
+            log_str = 'Skipping import of unknown module `%s` (skip_unknown=%r).'
+            logging.info(log_str, statement.module, skip_unknown)
+        else:
+          with utils.try_with_location(statement.location):
+            __import__(statement.module)
+          self._imported_modules.add(statement.module)
+      elif isinstance(statement, config_parser.IncludeStatement):
+        with utils.try_with_location(statement.location):
+          self.parse_config_file(statement.filename, skip_unknown)
+      else:
+        raise AssertionError(
+          'Unrecognized statement type {}.'.format(statement))
+
+  def parse_config_file(self, config_file, skip_unknown=False):
+    """Parse a Gin config file.
+
+    Args:
+      config_file: The path to a Gin config file.
+      skip_unknown: A boolean indicating whether unknown configurables and imports
+        should be skipped instead of causing errors (alternatively a list of
+        configurable names to skip if unknown). See `parse_config` for additional
+        details.
+
+    Raises:
+      IOError: If `config_file` cannot be read using any register file reader.
+    """
+    for reader, existence_check in _FILE_READERS:
+      if existence_check(config_file):
+        with reader(config_file) as f:
+          self.parse_config(f, skip_unknown=skip_unknown)
+          return
+    raise IOError('Unable to open file: {}'.format(config_file))
+
+  def parse_config_files_and_bindings(self,
+                                      config_files,
+                                      bindings,
+                                      finalize_config=True,
+                                      skip_unknown=False):
+    """Parse a list of config files followed by extra Gin bindings.
+
+    This function is equivalent to:
+
+        for config_file in config_files:
+          gin.parse_config_file(config_file, skip_configurables)
+        gin.parse_config(bindings, skip_configurables)
+        if finalize_config:
+          gin.finalize()
+
+    Args:
+      config_files: A list of paths to the Gin config files.
+      bindings: A list of individual parameter binding strings.
+      finalize_config: Whether to finalize the config after parsing and binding
+        (defaults to True).
+      skip_unknown: A boolean indicating whether unknown configurables and imports
+        should be skipped instead of causing errors (alternatively a list of
+        configurable names to skip if unknown). See `parse_config` for additional
+        details.
+    """
+    if config_files is None:
+      config_files = []
+    if bindings is None:
+      bindings = ''
+    for config_file in config_files:
+      self.parse_config_file(config_file, skip_unknown)
+    self.parse_config(bindings, skip_unknown)
+    if finalize_config:
+      self.finalize()
+
+  def finalize(self):
+    """A function that should be called after parsing all Gin config files.
+
+    Calling this function allows registered "finalize hooks" to inspect (and
+    potentially modify) the Gin config, to provide additional functionality. Hooks
+    should not modify the configuration object they receive directly; instead,
+    they should return a dictionary mapping Gin binding keys to (new or updated)
+    values. This way, all hooks see the config as originally parsed.
+
+    Raises:
+      RuntimeError: If the config is already locked.
+      ValueError: If two or more hooks attempt to modify or introduce bindings for
+        the same key. Since it is difficult to control the order in which hooks
+        are registered, allowing this could yield unpredictable behavior.
+    """
+    if config_is_locked():
+      raise RuntimeError('Finalize called twice (config already locked).')
+
+    bindings = {}
+    for hook in _FINALIZE_HOOKS:
+      new_bindings = hook(self._config)
+      if new_bindings is not None:
+        for key, value in six.iteritems(new_bindings):
+          pbk = ParsedBindingKey(key)
+          if pbk in bindings:
+            err_str = 'Received conflicting updates when running {}.'
+            raise ValueError(err_str.format(hook))
+          bindings[pbk] = value
+
+    for pbk, value in six.iteritems(bindings):
+      self.bind_parameter(pbk, value)
+
+    self._config_is_locked = True
+
+  @contextlib.contextmanager
+  def unlock_config(self):
+    """A context manager that temporarily unlocks the config.
+
+    Once the config has been locked by `gin.finalize`, it can only be modified
+    using this context manager (to make modifications explicit). Example:
+
+        with gin.unlock_config():
+          ...
+          gin.bind_parameter(...)
+
+    In the case where the config is already unlocked, this does nothing (the
+    config remains unlocked).
+
+    Yields:
+      None.
+    """
+    config_was_locked = self._config_is_locked
+    self._config_is_locked = False
+    yield
+    self._config_is_locked = config_was_locked
+
+  def enter_interactive_mode(self):
+    self._interactive_mode = True
+
+  def exit_interactive_mode(self):
+    self._interactive_mode = False
+
+  @contextlib.contextmanager
+  def interactive_mode(self):
+    try:
+      self.enter_interactive_mode()
+      yield
+    finally:
+      self.exit_interactive_mode()
+
+
+ConfigState._stack.append(ConfigState())
+get_default_state = ConfigState.get_default_state
+
+
+def bind_parameter(binding_key, value):
+  return get_default_state().bind_parameter(binding_key, value)
+
+
+def query_parameter(binding_key):
+  return get_default_state().query_parameter(binding_key)
+
+
+def singleton_value(key, constructor=None):
+  return get_default_state().singleton_value(key, constructor)
+
+
+def validate_reference(ref, require_bindings=True, require_evaluation=False):
+  return get_default_state().validate_reference(
+      ref,
+      require_bindings=require_bindings,
+      require_evaluation=require_evaluation)
+
+
+def clear_config(clear_constants=False):
+  return get_default_state().clear_config(clear_constants=clear_constants)
+
+
+def operative_config_str(max_line_length=80, continuation_indent=4):
+  return get_default_state().operative_config_str(
+    max_line_length=max_line_length, continuation_indent=continuation_indent)
+
+
+def config_str(max_line_length=80, continuation_indent=4):
+  return get_default_state().config_str(
+    max_line_length=max_line_length, continuation_indent=continuation_indent)
+
+
+def parse_config(bindings, skip_unknown=False):
+  return get_default_state().parse_config(bindings, skip_unknown)
+
+
+def parse_config_file(config_file, skip_unknown=False):
+  return get_default_state().parse_config_file(
+    config_file, skip_unknown=skip_unknown)
+
+
+def parse_config_files_and_bindings(
+    config_files, bindings, finalize_config=True, skip_unknown=False):
+  return get_default_state().parse_config_files_and_bindings(
+      config_files,
+      bindings,
+      finalize_config=finalize_config,
+      skip_unknown=skip_unknown)
+
+
+def finalize():
+  return get_default_state().finalize()
+
+
+def unlock_config():
+  return get_default_state().unlock_config()
+
+
+def enter_interactive_mode():
+  return get_default_state().enter_interactive_mode()
+
+
+def exit_interactive_mode(self):
+  return get_default_state().exit_interactive_mode()
+
+
+def interactive_mode():
+  return get_default_state().interactive_mode()
+
+
+def is_interactive_mode():
+  """
+  Whether or not interactive mode is enabled.
+
+  Redefining a configurable is not an error when enabled.
+  """
+  return get_default_state().is_interactive_mode
+
+
+def config_is_locked():
+  return get_default_state().config_is_locked
+
+
+bind_parameter.__doc__ = ConfigState.bind_parameter.__doc__
+query_parameter.__doc__ = ConfigState.query_parameter.__doc__
+singleton_value.__doc__ = ConfigState.singleton_value.__doc__
+validate_reference.__doc__ = ConfigState.validate_reference.__doc__
+clear_config.__doc__ = ConfigState.clear_config.__doc__
+operative_config_str.__doc__ = ConfigState.operative_config_str.__doc__
+config_str.__doc__ = ConfigState.config_str.__doc__
+parse_config.__doc__ = ConfigState.parse_config.__doc__
+parse_config_file.__doc__ = ConfigState.parse_config_file.__doc__
+parse_config_files_and_bindings.__doc__ = \
+    ConfigState.parse_config_files_and_bindings.__doc__
+finalize.__doc__ = ConfigState.finalize.__doc__
+unlock_config.__doc__ = ConfigState.unlock_config.__doc__
+enter_interactive_mode.__doc__ = ConfigState.enter_interactive_mode.__doc__
+exit_interactive_mode.__doc__ = ConfigState.exit_interactive_mode.__doc__
+interactive_mode.__doc__ = ConfigState.interactive_mode.__doc__
 
 
 # Maintains the registry of configurable functions and classes.
 _REGISTRY = selector_map.SelectorMap()
-
-# Maps tuples of `(scope, selector)` to associated parameter values. This
-# specifies the current global "configuration" set through `bind_parameter` or
-# `parse_config`, but doesn't include any functions' default argument values.
-_CONFIG = {}
-
-# Keeps a set of module names that were dynamically imported via config files.
-_IMPORTED_MODULES = set()
-
-# Maps `(scope, selector)` tuples to all configurable parameter values used
-# during program execution (including default argument values).
-_OPERATIVE_CONFIG = {}
 
 # Keeps track of currently active config scopes, as a stack of lists of config
 # scope names.
@@ -175,18 +749,13 @@ _ACTIVE_SCOPES = [[]]
 
 # Keeps track of hooks to run when the Gin config is finalized.
 _FINALIZE_HOOKS = []
-# Keeps track of whether the config is locked.
-_CONFIG_IS_LOCKED = False
-# Keeps track of whether "interactive mode" is enabled, in which case redefining
-# a configurable is not an error.
-_INTERACTIVE_MODE = False
 
 # Keeps track of constants created via gin.constant, to both prevent duplicate
 # definitions and to avoid writing them to the operative config.
 _CONSTANTS = selector_map.SelectorMap()
 
-# Keeps track of singletons created via the singleton configurable.
-_SINGLETONS = {}
+# Maintains a cache of argspecs for functions.
+_ARG_SPEC_CACHE = {}
 
 # Keeps track of file readers. These are functions that behave like Python's
 # `open` function (can be used a context manager) and will be used to load
@@ -195,13 +764,9 @@ _SINGLETONS = {}
 # `function` when a file can't be opened/read successfully.
 _FILE_READERS = [(open, os.path.isfile)]
 
-# Maintains a cache of argspecs for functions.
-_ARG_SPEC_CACHE = {}
 
 # Value to represent required parameters.
 REQUIRED = object()
-
-GinState._stack.append(GinState()._open())  # ensure the stack is never empty
 
 
 def _find_class_construction_fn(cls):
@@ -443,6 +1008,108 @@ def _should_skip(selector, skip_unknown):
   return skip_unknown  # Must be a bool by validation check.
 
 
+def parse_value(value):
+  """Parse and return a single Gin value."""
+  if not isinstance(value, six.string_types):
+    raise ValueError('value ({}) should be a string type.'.format(value))
+  return config_parser.ConfigParser(value, ParserDelegate()).parse_value()
+
+
+def _validate_parameters(fn_or_cls, arg_name_list, err_prefix):
+  for arg_name in arg_name_list or []:
+    if not _might_have_parameter(fn_or_cls, arg_name):
+      err_str = "Argument '{}' in {} not a parameter of '{}'."
+      raise ValueError(err_str.format(arg_name, err_prefix, fn_or_cls.__name__))
+
+
+def _get_cached_arg_spec(fn):
+  """Gets cached argspec for `fn`."""
+  arg_spec = _ARG_SPEC_CACHE.get(fn)
+  if arg_spec is None:
+    arg_spec_fn = inspect.getfullargspec if six.PY3 else inspect.getargspec
+    try:
+      arg_spec = arg_spec_fn(fn)
+    except TypeError:
+      # `fn` might be a callable object.
+      arg_spec = arg_spec_fn(fn.__call__)
+    _ARG_SPEC_CACHE[fn] = arg_spec
+  return arg_spec
+
+
+def _get_supplied_positional_parameter_names(fn, args):
+  """Returns the names of the supplied arguments to the given function."""
+  arg_spec = _get_cached_arg_spec(fn)
+  # May be shorter than len(args) if args contains vararg (*args) arguments.
+  return arg_spec.args[:len(args)]
+
+
+def _get_all_positional_parameter_names(fn):
+  """Returns the names of all positional arguments to the given function."""
+  arg_spec = _get_cached_arg_spec(fn)
+  args = arg_spec.args
+  if arg_spec.defaults:
+    args = args[:-len(arg_spec.defaults)]
+  return args
+
+
+def _get_kwarg_defaults(fn):
+  """Returns a dict mapping kwargs to default values for the given function."""
+  arg_spec = _get_cached_arg_spec(fn)
+  if arg_spec.defaults:
+    default_kwarg_names = arg_spec.args[-len(arg_spec.defaults):]
+    arg_vals = dict(zip(default_kwarg_names, arg_spec.defaults))
+  else:
+    arg_vals = {}
+
+  if six.PY3 and arg_spec.kwonlydefaults:
+    arg_vals.update(arg_spec.kwonlydefaults)
+
+  return arg_vals
+
+
+def _order_by_signature(fn, arg_names):
+  """Orders given `arg_names` based on their order in signature of `fn`."""
+  arg_spec = _get_cached_arg_spec(fn)
+  all_args = list(arg_spec.args)
+  if six.PY3 and arg_spec.kwonlyargs:
+    all_args.extend(arg_spec.kwonlyargs)
+  ordered = [arg for arg in all_args if arg in arg_names]
+  # Handle any leftovers corresponding to varkwargs in the order we got them.
+  ordered.extend([arg for arg in arg_names if arg not in ordered])
+  return ordered
+
+
+def _might_have_parameter(fn_or_cls, arg_name):
+  """Returns True if `arg_name` might be a valid parameter for `fn_or_cls`.
+
+  Specifically, this means that `fn_or_cls` either has a parameter named
+  `arg_name`, or has a `**kwargs` parameter.
+
+  Args:
+    fn_or_cls: The function or class to check.
+    arg_name: The name fo the parameter.
+
+  Returns:
+    Whether `arg_name` might be a valid argument of `fn`.
+  """
+  if inspect.isclass(fn_or_cls):
+    fn = _find_class_construction_fn(fn_or_cls)
+  else:
+    fn = fn_or_cls
+
+  while hasattr(fn, '__wrapped__'):
+    fn = fn.__wrapped__
+  arg_spec = _get_cached_arg_spec(fn)
+  if six.PY3:
+    if arg_spec.varkw:
+      return True
+    return arg_name in arg_spec.args or arg_name in arg_spec.kwonlyargs
+  else:
+    if arg_spec.keywords:
+      return True
+    return arg_name in arg_spec.args
+
+
 class ParserDelegate(config_parser.ParserDelegate):
   """Delegate to handle creation of configurable references and macros."""
 
@@ -591,249 +1258,6 @@ def _is_literally_representable(value):
   return _format_value(value) is not None
 
 
-def clear_config(clear_constants=False):
-  """Clears the global configuration.
-
-  This clears any parameter values set by `bind_parameter` or `parse_config`, as
-  well as the set of dynamically imported modules. It does not remove any
-  configurable functions or classes from the registry of configurables.
-
-  Args:
-    clear_constants: Whether to clear constants created by `constant`. Defaults
-      to False.
-  """
-  _set_config_is_locked(False)
-  _CONFIG.clear()
-  _SINGLETONS.clear()
-  if clear_constants:
-    _CONSTANTS.clear()
-  else:
-    saved_constants = _CONSTANTS.copy()
-    _CONSTANTS.clear()  # Clear then redefine constants (re-adding bindings).
-    for name, value in six.iteritems(saved_constants):
-      constant(name, value)
-  _IMPORTED_MODULES.clear()
-  _OPERATIVE_CONFIG.clear()
-
-
-def bind_parameter(binding_key, value):
-  """Binds the parameter value specified by `binding_key` to `value`.
-
-  The `binding_key` argument should either be a string of the form
-  `maybe/scope/optional.module.names.configurable_name.parameter_name`, or a
-  list or tuple of `(scope, selector, parameter_name)`, where `selector`
-  corresponds to `optional.module.names.configurable_name`. Once this function
-  has been called, subsequent calls (in the specified scope) to the specified
-  configurable function will have `value` supplied to their `parameter_name`
-  parameter.
-
-  Example:
-
-      @configurable('fully_connected_network')
-      def network_fn(num_layers=5, units_per_layer=1024):
-         ...
-
-      def main(_):
-        config.bind_parameter('fully_connected_network.num_layers', 3)
-        network_fn()  # Called with num_layers == 3, not the default of 5.
-
-  Args:
-    binding_key: The parameter whose value should be set. This can either be a
-      string, or a tuple of the form `(scope, selector, parameter)`.
-    value: The desired value.
-
-  Raises:
-    RuntimeError: If the config is locked.
-    ValueError: If no function can be found matching the configurable name
-      specified by `binding_key`, or if the specified parameter name is
-      blacklisted or not in the function's whitelist (if present).
-  """
-  if config_is_locked():
-    raise RuntimeError('Attempted to modify locked Gin config.')
-
-  pbk = ParsedBindingKey(binding_key)
-  fn_dict = _CONFIG.setdefault(pbk.config_key, {})
-  fn_dict[pbk.arg_name] = value
-
-
-def query_parameter(binding_key):
-  """Returns the currently bound value to the specified `binding_key`.
-
-  The `binding_key` argument should look like
-  'maybe/some/scope/maybe.modules.configurable_name.parameter_name'. Note that
-  this will not include default parameters.
-
-  Args:
-    binding_key: The parameter whose value should be queried.
-
-  Returns:
-    The value bound to the configurable/parameter combination given in
-    `binding_key`.
-
-  Raises:
-    ValueError: If no function can be found matching the configurable name
-      specified by `biding_key`, or if the specified parameter name is
-      blacklisted or not in the function's whitelist (if present) or if there is
-      no value bound for the queried parameter or configurable.
-  """
-  if config_parser.MODULE_RE.match(binding_key):
-    matching_selectors = _CONSTANTS.matching_selectors(binding_key)
-    if len(matching_selectors) == 1:
-      return _CONSTANTS[matching_selectors[0]]
-    elif len(matching_selectors) > 1:
-      err_str = "Ambiguous constant selector '{}', matches {}."
-      raise ValueError(err_str.format(binding_key, matching_selectors))
-  pbk = ParsedBindingKey(binding_key)
-  if pbk.config_key not in _CONFIG:
-    err_str = "Configurable '{}' has no bound parameters."
-    raise ValueError(err_str.format(pbk.given_selector))
-  if pbk.arg_name not in _CONFIG[pbk.config_key]:
-    err_str = "Configurable '{}' has no value bound for parameter '{}'."
-    raise ValueError(err_str.format(pbk.given_selector, pbk.arg_name))
-  return _CONFIG[pbk.config_key][pbk.arg_name]
-
-
-def _might_have_parameter(fn_or_cls, arg_name):
-  """Returns True if `arg_name` might be a valid parameter for `fn_or_cls`.
-
-  Specifically, this means that `fn_or_cls` either has a parameter named
-  `arg_name`, or has a `**kwargs` parameter.
-
-  Args:
-    fn_or_cls: The function or class to check.
-    arg_name: The name fo the parameter.
-
-  Returns:
-    Whether `arg_name` might be a valid argument of `fn`.
-  """
-  if inspect.isclass(fn_or_cls):
-    fn = _find_class_construction_fn(fn_or_cls)
-  else:
-    fn = fn_or_cls
-
-  while hasattr(fn, '__wrapped__'):
-    fn = fn.__wrapped__
-  arg_spec = _get_cached_arg_spec(fn)
-  if six.PY3:
-    if arg_spec.varkw:
-      return True
-    return arg_name in arg_spec.args or arg_name in arg_spec.kwonlyargs
-  else:
-    if arg_spec.keywords:
-      return True
-    return arg_name in arg_spec.args
-
-
-def _validate_parameters(fn_or_cls, arg_name_list, err_prefix):
-  for arg_name in arg_name_list or []:
-    if not _might_have_parameter(fn_or_cls, arg_name):
-      err_str = "Argument '{}' in {} not a parameter of '{}'."
-      raise ValueError(err_str.format(arg_name, err_prefix, fn_or_cls.__name__))
-
-
-def _get_cached_arg_spec(fn):
-  """Gets cached argspec for `fn`."""
-  arg_spec = _ARG_SPEC_CACHE.get(fn)
-  if arg_spec is None:
-    arg_spec_fn = inspect.getfullargspec if six.PY3 else inspect.getargspec
-    try:
-      arg_spec = arg_spec_fn(fn)
-    except TypeError:
-      # `fn` might be a callable object.
-      arg_spec = arg_spec_fn(fn.__call__)
-    _ARG_SPEC_CACHE[fn] = arg_spec
-  return arg_spec
-
-
-def _get_supplied_positional_parameter_names(fn, args):
-  """Returns the names of the supplied arguments to the given function."""
-  arg_spec = _get_cached_arg_spec(fn)
-  # May be shorter than len(args) if args contains vararg (*args) arguments.
-  return arg_spec.args[:len(args)]
-
-
-def _get_all_positional_parameter_names(fn):
-  """Returns the names of all positional arguments to the given function."""
-  arg_spec = _get_cached_arg_spec(fn)
-  args = arg_spec.args
-  if arg_spec.defaults:
-    args = args[:-len(arg_spec.defaults)]
-  return args
-
-
-def _get_kwarg_defaults(fn):
-  """Returns a dict mapping kwargs to default values for the given function."""
-  arg_spec = _get_cached_arg_spec(fn)
-  if arg_spec.defaults:
-    default_kwarg_names = arg_spec.args[-len(arg_spec.defaults):]
-    arg_vals = dict(zip(default_kwarg_names, arg_spec.defaults))
-  else:
-    arg_vals = {}
-
-  if six.PY3 and arg_spec.kwonlydefaults:
-    arg_vals.update(arg_spec.kwonlydefaults)
-
-  return arg_vals
-
-
-def _get_validated_required_kwargs(fn, fn_descriptor, whitelist, blacklist):
-  """Gets required argument names, and validates against white/blacklist."""
-  kwarg_defaults = _get_kwarg_defaults(fn)
-
-  required_kwargs = []
-  for kwarg, default in six.iteritems(kwarg_defaults):
-    if default is REQUIRED:
-      if blacklist and kwarg in blacklist:
-        err_str = "Argument '{}' of {} marked REQUIRED but blacklisted."
-        raise ValueError(err_str.format(kwarg, fn_descriptor))
-      if whitelist and kwarg not in whitelist:
-        err_str = "Argument '{}' of {} marked REQUIRED but not whitelisted."
-        raise ValueError(err_str.format(kwarg, fn_descriptor))
-      required_kwargs.append(kwarg)
-
-  return required_kwargs
-
-
-def _get_default_configurable_parameter_values(fn, whitelist, blacklist):
-  """Retrieve all default values for configurable parameters of a function.
-
-  Any parameters included in the supplied blacklist, or not included in the
-  supplied whitelist, are excluded.
-
-  Args:
-    fn: The function whose parameter values should be retrieved.
-    whitelist: The whitelist (or `None`) associated with the function.
-    blacklist: The blacklist (or `None`) associated with the function.
-
-  Returns:
-    A dictionary mapping configurable parameter names to their default values.
-  """
-  arg_vals = _get_kwarg_defaults(fn)
-
-  # Now, eliminate keywords that are blacklisted, or aren't whitelisted (if
-  # there's a whitelist), or aren't representable as a literal value.
-  for k in list(six.iterkeys(arg_vals)):
-    whitelist_fail = whitelist and k not in whitelist
-    blacklist_fail = blacklist and k in blacklist
-    representable = _is_literally_representable(arg_vals[k])
-    if whitelist_fail or blacklist_fail or not representable:
-      del arg_vals[k]
-
-  return arg_vals
-
-
-def _order_by_signature(fn, arg_names):
-  """Orders given `arg_names` based on their order in the signature of `fn`."""
-  arg_spec = _get_cached_arg_spec(fn)
-  all_args = list(arg_spec.args)
-  if six.PY3 and arg_spec.kwonlyargs:
-    all_args.extend(arg_spec.kwonlyargs)
-  ordered = [arg for arg in all_args if arg in arg_names]
-  # Handle any leftovers corresponding to varkwargs in the order we got them.
-  ordered.extend([arg for arg in arg_names if arg not in ordered])
-  return ordered
-
-
 def current_scope():
   return _ACTIVE_SCOPES[-1][:]  # Slice to get copy.
 
@@ -958,7 +1382,8 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
     new_kwargs = {}
     for i in range(len(scope_components) + 1):
       partial_scope_str = '/'.join(scope_components[:i])
-      new_kwargs.update(_CONFIG.get((partial_scope_str, selector), {}))
+      new_kwargs.update(get_default_state()._config.get(
+        (partial_scope_str, selector), {}))
     gin_bound_args = list(new_kwargs.keys())
     scope_str = partial_scope_str
 
@@ -1011,11 +1436,12 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
     # object has supplied a different set of arguments. By doing an update, a
     # Gin-supplied or default value will be present if it was used (not
     # overridden by the caller) at least once.
-    op_cfg = _OPERATIVE_CONFIG.setdefault((scope_str, selector), {})
+    op_cfg = get_default_state()._operative_config.setdefault(
+      (scope_str, selector), {})
     op_cfg.update(operative_parameter_values)
 
     # We call deepcopy for two reasons: First, to prevent the called function
-    # from modifying any of the values in `_CONFIG` through references passed in
+    # from modifying any of the values in `get_default_state()._config` through references passed in
     # via `new_kwargs`; Second, to facilitate evaluation of any
     # `ConfigurableReference` instances buried somewhere inside `new_kwargs`.
     # See the docstring on `ConfigurableReference.__deepcopy__` above for more
@@ -1136,7 +1562,7 @@ def _make_configurable(fn_or_cls,
     raise ValueError("Module '{}' is invalid.".format(module))
 
   selector = module + '.' + name if module else name
-  if not _INTERACTIVE_MODE and selector in _REGISTRY:
+  if not is_interactive_mode() and selector in _REGISTRY:
     err_str = ("A configurable matching '{}' already exists.\n\n"
                'To allow re-registration of configurables in an interactive '
                'environment, use:\n\n'
@@ -1308,8 +1734,8 @@ def _config_str(configuration_object,
   """Print the configuration specified in configuration object.
 
   Args:
-    configuration_object: Either OPERATIVE_CONFIG_ (operative config) or _CONFIG
-      (all config, bound and unbound).
+    configuration_object: Either state._operative_config (operative config) or
+      get_default_state()._config (all config, bound and unbound).
     max_line_length: A (soft) constraint on the maximum length of a line in the
       formatted string. Large nested structures will be split across lines, but
       e.g. long strings won't be split into a concatenation of shorter strings.
@@ -1342,7 +1768,8 @@ def _config_str(configuration_object,
   # span multiple lines. Imports are first, followed by macros, and finally all
   # other bindings sorted in alphabetical order by configurable name.
   formatted_statements = [
-      'import {}'.format(module) for module in sorted(_IMPORTED_MODULES)
+      'import {}'.format(module) for module in sorted(
+        get_default_state()._imported_modules)
   ]
   if formatted_statements:
     formatted_statements.append('')
@@ -1384,165 +1811,6 @@ def _config_str(configuration_object,
   return '\n'.join(formatted_statements)
 
 
-def operative_config_str(max_line_length=80, continuation_indent=4):
-  """Retrieve the "operative" configuration as a config string.
-
-  The operative configuration consists of all parameter values used by
-  configurable functions that are actually called during execution of the
-  current program. Parameters associated with configurable functions that are
-  not called (and so can have no effect on program execution) won't be included.
-
-  The goal of the function is to return a config that captures the full set of
-  relevant configurable "hyperparameters" used by a program. As such, the
-  returned configuration will include the default values of arguments from
-  configurable functions (as long as the arguments aren't blacklisted or missing
-  from a supplied whitelist), as well as any parameter values overridden via
-  `bind_parameter` or through `parse_config`.
-
-  Any parameters that can't be represented as literals (capable of being parsed
-  by `parse_config`) are excluded. The resulting config string is sorted
-  lexicographically and grouped by configurable name.
-
-  Args:
-    max_line_length: A (soft) constraint on the maximum length of a line in the
-      formatted string. Large nested structures will be split across lines, but
-      e.g. long strings won't be split into a concatenation of shorter strings.
-    continuation_indent: The indentation for continued lines.
-
-  Returns:
-    A config string capturing all parameter values set in the current program.
-  """
-  return _config_str(_OPERATIVE_CONFIG, max_line_length, continuation_indent)
-
-
-def config_str(max_line_length=80, continuation_indent=4):
-  """Retrieve the interpreted configuration as a config string.
-
-  This is not the _operative configuration_, in that it includes parameter
-  values which are unused by by the program.
-
-  Args:
-    max_line_length: A (soft) constraint on the maximum length of a line in the
-      formatted string. Large nested structures will be split across lines, but
-      e.g. long strings won't be split into a concatenation of shorter strings.
-    continuation_indent: The indentation for continued lines.
-
-  Returns:
-    A config string capturing all parameter values used by the current program.
-  """
-  return _config_str(_CONFIG, max_line_length, continuation_indent)
-
-
-def parse_config(bindings, skip_unknown=False):
-  """Parse a file, string, or list of strings containing parameter bindings.
-
-  Parses parameter binding strings to set up the global configuration.  Once
-  `parse_config` has been called, any calls to configurable functions will have
-  parameter values set according to the values specified by the parameter
-  bindings in `bindings`.
-
-  An individual parameter binding has the format
-
-      maybe/some/scopes/configurable_name.parameter_name = value
-
-  Multiple binding strings can be passed either in the form of a file-like
-  object supporting the `readline` method, a single string with each individual
-  parameter binding separated by a newline, or as a list of individual parameter
-  binding strings.
-
-  Any Python literal (lists, tuples, dicts, strings, etc.) is acceptable to the
-  right of the equals sign, and follows standard Python rules for line
-  continuation. Additionally, a value starting with '@' is interpreted as a
-  (possibly scoped) reference to another configurable function, in which case
-  this value is replaced by a reference to that function. If the value
-  furthermore ends in `()` (e.g., `@configurable_name()`), then the value
-  returned when calling the function is used (it will be called *just before*
-  the function consuming the output is called).
-
-  See the module documentation for a more detailed description of scoping
-  mechanisms and a complete example.
-
-  Reading from a file could be done as follows:
-
-      with open('/path/to/file.config') as bindings:
-        gin.parse_config(bindings)
-
-  Passing a newline separated string of parameter bindings might look like:
-
-      bindings = '''
-          my_class.param_one = 'asdf'
-          my_class_param_two = 9.7
-      '''
-      gin.parse_config(bindings)
-
-  Alternatively, one can declare a list of parameter bindings and pass it in:
-
-      bindings = [
-          'my_class.param_one = "asdf"',
-          'my_class.param_two = 9.7',
-      ]
-      gin.parse_config(bindings)
-
-  Can skip unknown configurables. For example, if no module containing a
-  'training' configurable was imported, errors can be avoided by specifying
-  `skip_unknown=True`:
-
-      bindings = [
-          'my_class.param_one = "asdf"',
-          'my_class.param_two = 9.7',
-          'training.learning_rate = 0.1',
-      ]
-      gin.parse_config(bindings, skip_unknown=True)
-
-  Args:
-    bindings: A file-like object supporting the readline method, a newline
-      separated string of parameter bindings, or a list of individual parameter
-      binding strings.
-    skip_unknown: A boolean indicating whether unknown configurables and imports
-      should be skipped (instead of causing an error). Configurable references
-      to unknown configurables will cause errors if they are present in a
-      binding that is not itself skipped due to an unknown configurable. This
-      can also be a list of configurable names: any unknown configurables that
-      do not match an item in the list will still cause errors. Note that
-      bindings for known configurables will always be parsed.
-  """
-  if isinstance(bindings, (list, tuple)):
-    bindings = '\n'.join(bindings)
-
-  _validate_skip_unknown(skip_unknown)
-  if isinstance(skip_unknown, (list, tuple)):
-    skip_unknown = set(skip_unknown)
-
-  parser = config_parser.ConfigParser(bindings, ParserDelegate(skip_unknown))
-  for statement in parser:
-    if isinstance(statement, config_parser.BindingStatement):
-      scope, selector, arg_name, value, location = statement
-      if not arg_name:
-        macro_name = '{}/{}'.format(scope, selector) if scope else selector
-        with utils.try_with_location(location):
-          bind_parameter((macro_name, 'gin.macro', 'value'), value)
-        continue
-      if not _should_skip(selector, skip_unknown):
-        with utils.try_with_location(location):
-          bind_parameter((scope, selector, arg_name), value)
-    elif isinstance(statement, config_parser.ImportStatement):
-      if skip_unknown:
-        try:
-          __import__(statement.module)
-          _IMPORTED_MODULES.add(statement.module)
-        except ImportError:
-          log_str = 'Skipping import of unknown module `%s` (skip_unknown=%r).'
-          logging.info(log_str, statement.module, skip_unknown)
-      else:
-        with utils.try_with_location(statement.location):
-          __import__(statement.module)
-        _IMPORTED_MODULES.add(statement.module)
-    elif isinstance(statement, config_parser.IncludeStatement):
-      with utils.try_with_location(statement.location):
-        parse_config_file(statement.filename, skip_unknown)
-    else:
-      raise AssertionError('Unrecognized statement type {}.'.format(statement))
-
 
 def register_file_reader(*args):
   """Register a file reader for use in parse_config_file.
@@ -1582,153 +1850,51 @@ def register_file_reader(*args):
     raise TypeError(err_str.format(len(args)))
 
 
-def parse_config_file(config_file, skip_unknown=False):
-  """Parse a Gin config file.
+def _get_validated_required_kwargs(
+    fn, fn_descriptor, whitelist, blacklist):
+  """Gets required argument names, and validates against white/blacklist."""
+  kwarg_defaults = _get_kwarg_defaults(fn)
+
+  required_kwargs = []
+  for kwarg, default in six.iteritems(kwarg_defaults):
+    if default is REQUIRED:
+      if blacklist and kwarg in blacklist:
+        err_str = "Argument '{}' of {} marked REQUIRED but blacklisted."
+        raise ValueError(err_str.format(kwarg, fn_descriptor))
+      if whitelist and kwarg not in whitelist:
+        err_str = "Argument '{}' of {} marked REQUIRED but not whitelisted."
+        raise ValueError(err_str.format(kwarg, fn_descriptor))
+      required_kwargs.append(kwarg)
+
+  return required_kwargs
+
+
+def _get_default_configurable_parameter_values(fn, whitelist, blacklist):
+  """Retrieve all default values for configurable parameters of a function.
+
+  Any parameters included in the supplied blacklist, or not included in the
+  supplied whitelist, are excluded.
 
   Args:
-    config_file: The path to a Gin config file.
-    skip_unknown: A boolean indicating whether unknown configurables and imports
-      should be skipped instead of causing errors (alternatively a list of
-      configurable names to skip if unknown). See `parse_config` for additional
-      details.
+    fn: The function whose parameter values should be retrieved.
+    whitelist: The whitelist (or `None`) associated with the function.
+    blacklist: The blacklist (or `None`) associated with the function.
 
-  Raises:
-    IOError: If `config_file` cannot be read using any register file reader.
+  Returns:
+    A dictionary mapping configurable parameter names to their default values.
   """
-  for reader, existence_check in _FILE_READERS:
-    if existence_check(config_file):
-      with reader(config_file) as f:
-        parse_config(f, skip_unknown=skip_unknown)
-        return
-  raise IOError('Unable to open file: {}'.format(config_file))
+  arg_vals = _get_kwarg_defaults(fn)
 
+  # Now, eliminate keywords that are blacklisted, or aren't whitelisted (if
+  # there's a whitelist), or aren't representable as a literal value.
+  for k in list(six.iterkeys(arg_vals)):
+    whitelist_fail = whitelist and k not in whitelist
+    blacklist_fail = blacklist and k in blacklist
+    representable = _is_literally_representable(arg_vals[k])
+    if whitelist_fail or blacklist_fail or not representable:
+      del arg_vals[k]
 
-def parse_config_files_and_bindings(config_files,
-                                    bindings,
-                                    finalize_config=True,
-                                    skip_unknown=False):
-  """Parse a list of config files followed by extra Gin bindings.
-
-  This function is equivalent to:
-
-      for config_file in config_files:
-        gin.parse_config_file(config_file, skip_configurables)
-      gin.parse_config(bindings, skip_configurables)
-      if finalize_config:
-        gin.finalize()
-
-  Args:
-    config_files: A list of paths to the Gin config files.
-    bindings: A list of individual parameter binding strings.
-    finalize_config: Whether to finalize the config after parsing and binding
-      (defaults to True).
-    skip_unknown: A boolean indicating whether unknown configurables and imports
-      should be skipped instead of causing errors (alternatively a list of
-      configurable names to skip if unknown). See `parse_config` for additional
-      details.
-  """
-  if config_files is None:
-    config_files = []
-  if bindings is None:
-    bindings = ''
-  for config_file in config_files:
-    parse_config_file(config_file, skip_unknown)
-  parse_config(bindings, skip_unknown)
-  if finalize_config:
-    finalize()
-
-
-def parse_value(value):
-  """Parse and return a single Gin value."""
-  if not isinstance(value, six.string_types):
-    raise ValueError('value ({}) should be a string type.'.format(value))
-  return config_parser.ConfigParser(value, ParserDelegate()).parse_value()
-
-
-def config_is_locked():
-  return _CONFIG_IS_LOCKED
-
-
-def _set_config_is_locked(is_locked):
-  global _CONFIG_IS_LOCKED
-  _CONFIG_IS_LOCKED = is_locked
-
-
-@contextlib.contextmanager
-def unlock_config():
-  """A context manager that temporarily unlocks the config.
-
-  Once the config has been locked by `gin.finalize`, it can only be modified
-  using this context manager (to make modifications explicit). Example:
-
-      with gin.unlock_config():
-        ...
-        gin.bind_parameter(...)
-
-  In the case where the config is already unlocked, this does nothing (the
-  config remains unlocked).
-
-  Yields:
-    None.
-  """
-  config_was_locked = config_is_locked()
-  _set_config_is_locked(False)
-  yield
-  _set_config_is_locked(config_was_locked)
-
-
-def enter_interactive_mode():
-  global _INTERACTIVE_MODE
-  _INTERACTIVE_MODE = True
-
-
-def exit_interactive_mode():
-  global _INTERACTIVE_MODE
-  _INTERACTIVE_MODE = False
-
-
-@contextlib.contextmanager
-def interactive_mode():
-  try:
-    enter_interactive_mode()
-    yield
-  finally:
-    exit_interactive_mode()
-
-
-def finalize():
-  """A function that should be called after parsing all Gin config files.
-
-  Calling this function allows registered "finalize hooks" to inspect (and
-  potentially modify) the Gin config, to provide additional functionality. Hooks
-  should not modify the configuration object they receive directly; instead,
-  they should return a dictionary mapping Gin binding keys to (new or updated)
-  values. This way, all hooks see the config as originally parsed.
-
-  Raises:
-    RuntimeError: If the config is already locked.
-    ValueError: If two or more hooks attempt to modify or introduce bindings for
-      the same key. Since it is difficult to control the order in which hooks
-      are registered, allowing this could yield unpredictable behavior.
-  """
-  if config_is_locked():
-    raise RuntimeError('Finalize called twice (config already locked).')
-
-  bindings = {}
-  for hook in _FINALIZE_HOOKS:
-    new_bindings = hook(_CONFIG)
-    if new_bindings is not None:
-      for key, value in six.iteritems(new_bindings):
-        pbk = ParsedBindingKey(key)
-        if pbk in bindings:
-          err_str = 'Received conflicting updates when running {}.'
-          raise ValueError(err_str.format(hook))
-        bindings[pbk] = value
-
-  for pbk, value in six.iteritems(bindings):
-    bind_parameter(pbk, value)
-
-  _set_config_is_locked(True)
+  return arg_vals
 
 
 def register_finalize_hook(fn):
@@ -1782,16 +1948,6 @@ def iterate_references(config, to=None):
         yield value
 
 
-def validate_reference(ref, require_bindings=True, require_evaluation=False):
-  if require_bindings and ref.config_key not in _CONFIG:
-    err_str = "No bindings specified for '{}'."
-    raise ValueError(err_str.format(ref.scoped_selector))
-
-  if require_evaluation and not ref.evaluate:
-    err_str = "Reference '{}' must be evaluated (add '()')."
-    raise ValueError(err_str.format(ref))
-
-
 @configurable(module='gin')
 def macro(value):
   """A Gin macro."""
@@ -1802,23 +1958,6 @@ def macro(value):
 def _retrieve_constant():
   """Fetches and returns a constant from the _CONSTANTS map."""
   return _CONSTANTS[current_scope_str()]
-
-
-@configurable(module='gin')
-def singleton(constructor):
-  return singleton_value(current_scope_str(), constructor)
-
-
-def singleton_value(key, constructor=None):
-  if key not in _SINGLETONS:
-    if not constructor:
-      err_str = "No singleton found for key '{}', and no constructor was given."
-      raise ValueError(err_str.format(key))
-    if not callable(constructor):
-      err_str = "The constructor for singleton '{}' is not callable."
-      raise ValueError(err_str.format(key))
-    _SINGLETONS[key] = constructor()
-  return _SINGLETONS[key]
 
 
 def constant(name, value):
@@ -1917,3 +2056,11 @@ def find_unknown_references_hook(config):
           binding_key = '{}{}.{}'.format(scope_str, min_selector, param_name)
           additional_msg = additional_msg_fmt.format(binding_key)
           _raise_unknown_reference_error(maybe_unknown, additional_msg)
+
+
+# needs to be defined after configurable
+@configurable(module='gin')
+def singleton(constructor):
+  return get_default_state().singleton(constructor)
+
+singleton.__doc__ = ConfigState.singleton.__doc__
