@@ -93,7 +93,9 @@ import inspect
 import logging
 import os
 import pprint
+import sys
 import threading
+import traceback
 
 import enum
 
@@ -1521,8 +1523,17 @@ def parse_config(bindings, skip_unknown=False):
           __import__(statement.module)
           _IMPORTED_MODULES.add(statement.module)
         except ImportError:
-          log_str = 'Skipping import of unknown module `%s` (skip_unknown=%r).'
-          logging.info(log_str, statement.module, skip_unknown)
+          tb_len = len(traceback.extract_tb(sys.exc_info()[2]))
+          log_str = ('Skipping import of unknown module `%s` '
+                     '(skip_unknown=True).')
+          log_args = [statement.module]
+          if tb_len > 1:
+            # In case the error comes from a nested import (i.e. the module is
+            # available, but it imports some unavailable module), print the
+            # traceback to avoid confusion.
+            log_str += '\n%s'
+            log_args.append(traceback.format_exc())
+          logging.info(log_str, *log_args)
       else:
         with utils.try_with_location(statement.location):
           __import__(statement.module)

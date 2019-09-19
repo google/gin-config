@@ -21,6 +21,7 @@ import abc
 import collections
 import inspect
 import io
+import logging
 import os
 import threading
 
@@ -453,7 +454,36 @@ class ConfigTest(absltest.TestCase):
     """
     with self.assertRaises(ImportError):
       config.parse_config(config_str)
-    config.parse_config(config_str, skip_unknown=True)
+    with absltest.mock.patch.object(logging, 'info') as mock_log:
+      config.parse_config(config_str, skip_unknown=True)
+      found_log = False
+      for log in mock_log.call_args_list:
+        log = log[0][0] % tuple(log[0][1:])
+        if 'not.a.real.module' in log:
+          if 'Traceback' in log:
+            self.fail('Traceback included for non-nested unknown import log.')
+          else:
+            found_log = True
+            break
+      self.assertTrue(
+          found_log, msg='Did not log import error.')
+
+  def testSkipUnknownNestedImport(self):
+    config_str = """
+      import gin.testdata.invalid_import
+    """
+    with self.assertRaises(ImportError):
+      config.parse_config(config_str)
+    with absltest.mock.patch.object(logging, 'info') as mock_log:
+      config.parse_config(config_str, skip_unknown=True)
+      found_log = False
+      for args, _ in mock_log.call_args_list:
+        log = args[0] % tuple(args[1:])
+        if 'gin.testdata.invalid_import' in log and 'Traceback' in log:
+          found_log = True
+          break
+      self.assertTrue(
+          found_log, msg='Did not log traceback of nested import error.')
 
   def testSkipUnknownReference(self):
     config_str = """

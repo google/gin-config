@@ -53,6 +53,7 @@ install_requires = ['six >= 1.10.0']
 test_requirements = [
     'six >= 1.10.0',
     'absl-py >= 0.1.6',
+    'mock >= 3.0.5',
     'nose',
 ]
 
