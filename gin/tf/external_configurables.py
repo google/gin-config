@@ -142,8 +142,8 @@ config.external_configurable(tf.random.stateless_uniform,
                              'tf.random.stateless_uniform')
 
 # Distribution strategies.
-config.external_configurable(tf.contrib.distribute.MirroredStrategy,
-                             module='tf.contrib.distribute')
+config.external_configurable(tf.compat.v2.distribute.MirroredStrategy,
+                             module='tf.compat.v2.distribute')
 
 # Constants
 
