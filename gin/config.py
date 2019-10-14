@@ -349,6 +349,9 @@ class ConfigurableReference(object):
   def __ne__(self, other):
     return not self.__eq__(other)
 
+  def __hash__(self):
+    return hash(repr(self))
+
   def __repr__(self):
     # Check if this reference is a macro or constant, i.e. @.../macro() or
     # @.../constant(). Only macros and constants correspond to the %... syntax.
