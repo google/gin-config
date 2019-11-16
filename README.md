@@ -60,6 +60,13 @@ Import additional TensorFlow-specific functionality via the TF module:
 import gin.tf
 ```
 
+Import additional PyTorch-specific functionality via the torch module:
+
+```python
+import gin.torch
+```
+
+
 ### 2. Configuring default values with Gin (`@gin.configurable` and "bindings")
 
 At its most basic, Gin can be seen as a way of providing or changing default

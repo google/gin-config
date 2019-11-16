@@ -34,10 +34,10 @@ def _ensure_tf_install():  # pylint: disable=g-statement-before-imports
     # Print more informative error message, then reraise.
     print("\n\nFailed to import TensorFlow. Please note that TensorFlow is not "
           "installed by default when you install Gin-Config. This is so that "
-          "users can decide whether to install the GPU-enabled TensorFlow "
-          "package. To use Gin-Config, please install the most recent version "
-          "of TensorFlow, by following instructions at "
-          "https://tensorflow.org/install.\n\n")
+          "users can decide whether to install TensorFlow, GPU-enabled "
+          "Tensorflow or PyTorch. To use Gin-Config with TensorFlow, please "
+          "install the most recent version of TensorFlow, by following "
+          "instructions at https://tensorflow.org/install.\n\n")
     raise
 
   # Update this whenever we need to depend on a newer TensorFlow release.

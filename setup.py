@@ -25,7 +25,7 @@ from os import path
 from setuptools import find_packages
 from setuptools import setup
 
-_VERSION = '0.2.0'
+_VERSION = '0.3.0'
 
 here = path.abspath(path.dirname(__file__))
 
@@ -68,6 +68,7 @@ setup(
         'tensorflow': ['tensorflow >= 1.13.0'],
         'tensorflow_gpu': ['tensorflow-gpu >= 1.13.0'],
         ':python_version<"3"': ['enum34'],
+        'torch': ['torch >= 1.3.0']
     },
     tests_require=test_requirements,
     test_suite='nose.collector',
