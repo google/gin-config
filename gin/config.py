@@ -1797,12 +1797,13 @@ def iterate_references(config, to=None):
 
 def validate_reference(ref, require_bindings=True, require_evaluation=False):
   if require_bindings and ref.config_key not in _CONFIG:
-    err_str = "No bindings specified for '{}'."
-    raise ValueError(err_str.format(ref.scoped_selector))
+    err_str = "No bindings specified for '{}' in config string: \n{}"
+    raise ValueError(err_str.format(ref.scoped_selector, config_str()))
 
   if require_evaluation and not ref.evaluate:
-    err_str = "Reference '{}' must be evaluated (add '()')."
-    raise ValueError(err_str.format(ref))
+    err_str = ("Reference '{}' must be evaluated (add '()') "
+               'in config string: \n{}.')
+    raise ValueError(err_str.format(ref, config_str()))
 
 
 @configurable(module='gin')
