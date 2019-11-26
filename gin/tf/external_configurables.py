@@ -142,8 +142,9 @@ config.external_configurable(tf.random.stateless_uniform,
                              'tf.random.stateless_uniform')
 
 # Distribution strategies.
-config.external_configurable(tf.contrib.distribute.MirroredStrategy,
-                             module='tf.contrib.distribute')
+if hasattr(tf, 'contrib'):
+    config.external_configurable(tf.contrib.distribute.MirroredStrategy,
+                                 module='tf.contrib.distribute')
 
 # Constants
 
