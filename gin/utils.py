@@ -27,28 +27,16 @@ import six
 
 def augment_exception_message_and_reraise(exception, message):
   """Reraises `exception`, appending `message` to its string representation."""
-
-  class ExceptionProxy(type(exception)):
-    """Acts as a proxy for an exception with an augmented message."""
-    __module__ = type(exception).__module__
-
-    def __init__(self):
-      pass
-
-    def __getattr__(self, attr_name):
-      return getattr(exception, attr_name)
-
-    def __str__(self):
-      return str(exception) + message
-
-  ExceptionProxy.__name__ = type(exception).__name__
-
-  proxy = ExceptionProxy()
-  if six.PY3:
-    ExceptionProxy.__qualname__ = type(exception).__qualname__
-    six.raise_from(proxy.with_traceback(exception.__traceback__), None)
+  if len(exception.args) == 1 and isinstance(exception.args[0], str):
+    # Exception with single string argument (most common case)
+    exception.args = (exception.args[0] + message)
   else:
-    six.reraise(proxy, None, sys.exc_info()[2])
+    exception.args = exception.args + (message,)
+  
+  if six.PY3:
+    six.raise_from(exception, None)
+  else:
+    six.reraise(exception, None, sys.exc_info()[2])
 
 
 def _format_location(location):
