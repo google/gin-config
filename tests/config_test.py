@@ -385,7 +385,7 @@ class ConfigTest(absltest.TestCase):
   def testParseConfigImportsAndIncludes(self):
     config_str = """
       import gin.testdata.import_test_configurables
-      include '{}gin/testdata/my_other_func.gin'
+      include '{}/gin/testdata/my_other_func.gin'
 
       identity.param = 'success'
       ConfigurableClass.kwarg1 = @identity()
@@ -402,7 +402,7 @@ class ConfigTest(absltest.TestCase):
       config.parse_config("include 'nonexistent/file'")
 
   def testInvalidIncludeError(self):
-    config_file = '{}gin/testdata/invalid_include.gin'
+    config_file = '{}/gin/testdata/invalid_include.gin'
     path_prefix = absltest.get_default_test_srcdir()
     err_msg_regex = ('Unable to open file: not/a/valid/file.gin. '
                      'Searched config paths:')
@@ -1270,7 +1270,7 @@ class ConfigTest(absltest.TestCase):
           (@nesting/macro(),)
       ]
       configurable2.kwarg1 = {
-          'nesting': {'like': ['a', (@pufferfish/macro(),)]}
+          'another': {'deeply': ['nested', (@structure/macro(),)]}
       }
     """
     config.parse_config(config_str)
