@@ -385,13 +385,16 @@ class ConfigTest(absltest.TestCase):
   def testParseConfigImportsAndIncludes(self):
     config_str = """
       import gin.testdata.import_test_configurables
-      include '{}/gin/testdata/my_other_func.gin'
+      include '{}'
 
       identity.param = 'success'
       ConfigurableClass.kwarg1 = @identity()
       ConfigurableClass.kwarg2 = @my_other_func()
     """
-    config.parse_config(config_str.format(absltest.get_default_test_srcdir()))
+    include_path = os.path.join(
+        absltest.get_default_test_srcdir(),
+        'gin/testdata/my_other_func.gin')
+    config.parse_config(config_str.format(include_path))
     self.assertEqual(ConfigurableClass().kwarg1, 'success')
     self.assertEqual(ConfigurableClass().kwarg2, (-2.9, 9.3, 'Oh, Dear.'))
 
@@ -402,12 +405,13 @@ class ConfigTest(absltest.TestCase):
       config.parse_config("include 'nonexistent/file'")
 
   def testInvalidIncludeError(self):
-    config_file = '{}/gin/testdata/invalid_include.gin'
-    path_prefix = absltest.get_default_test_srcdir()
+    config_file = os.path.join(
+        absltest.get_default_test_srcdir(),
+        'gin/testdata/invalid_include.gin')
     err_msg_regex = ('Unable to open file: not/a/valid/file.gin. '
                      'Searched config paths:')
     with six.assertRaisesRegex(self, IOError, err_msg_regex):
-      config.parse_config_file(config_file.format(path_prefix))
+      config.parse_config_file(config_file)
 
   def testExplicitParametersOverrideGin(self):
     config_str = """
