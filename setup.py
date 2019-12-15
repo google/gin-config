@@ -15,10 +15,7 @@
 
 """Setup script for gin-config.
 
-See:
-
-https://github.com/google/gin-config
-
+See https://github.com/google/gin-config for documentation.
 """
 
 from os import path
@@ -30,7 +27,6 @@ _VERSION = '0.3.0'
 here = path.abspath(path.dirname(__file__))
 
 long_description = """
-
 # Gin
 
 Gin provides a lightweight configuration framework for Python, based on
@@ -50,12 +46,6 @@ TensorFlow), which tend to have many parameters, often nested in complex ways.
 """
 
 install_requires = ['six >= 1.10.0']
-test_requirements = [
-    'six >= 1.10.0',
-    'absl-py >= 0.1.6',
-    'nose',
-]
-
 
 setup(
     name='gin-config',
@@ -65,14 +55,19 @@ setup(
     package_data={'testdata': ['testdata/*.gin']},
     install_requires=install_requires,
     extras_require={  # Optional
-        'tensorflow': ['tensorflow >= 1.13.0'],
-        'tensorflow_gpu': ['tensorflow-gpu >= 1.13.0'],
         ':python_version<"3"': ['enum34'],
         'torch': ['torch >= 1.3.0']
+        'tensorflow': ['tensorflow >= 1.13.0'],
+        'tensorflow-gpu': ['tensorflow-gpu >= 1.13.0'],
+        'tf-nightly': ['tf-nightly'],
+        'testing': [
+            'six >= 1.10.0',
+            'absl-py >= 0.1.6',
+            'mock >= 3.0.5',
+            'nose',
+        ]
     },
-    tests_require=test_requirements,
-    test_suite='nose.collector',
-    description='Gin-config: a lightweight configuration library for Python',
+    description='Gin-Config: A lightweight configuration library for Python',
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/google/gin-config',  # Optional
@@ -95,6 +90,7 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
 
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
@@ -102,7 +98,6 @@ setup(
         'Topic :: Software Development',
         'Topic :: Software Development :: Libraries',
         'Topic :: Software Development :: Libraries :: Python Modules',
-
     ],
     project_urls={  # Optional
         'Documentation': 'https://github.com/google/gin-config/docs',

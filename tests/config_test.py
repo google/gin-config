@@ -21,6 +21,7 @@ import abc
 import collections
 import inspect
 import io
+import logging
 import os
 import threading
 
@@ -384,13 +385,16 @@ class ConfigTest(absltest.TestCase):
   def testParseConfigImportsAndIncludes(self):
     config_str = """
       import gin.testdata.import_test_configurables
-      include '{}gin/testdata/my_other_func.gin'
+      include '{}'
 
       identity.param = 'success'
       ConfigurableClass.kwarg1 = @identity()
       ConfigurableClass.kwarg2 = @my_other_func()
     """
-    config.parse_config(config_str.format(absltest.get_default_test_srcdir()))
+    include_path = os.path.join(
+        absltest.get_default_test_srcdir(),
+        'gin/testdata/my_other_func.gin')
+    config.parse_config(config_str.format(include_path))
     self.assertEqual(ConfigurableClass().kwarg1, 'success')
     self.assertEqual(ConfigurableClass().kwarg2, (-2.9, 9.3, 'Oh, Dear.'))
 
@@ -401,12 +405,13 @@ class ConfigTest(absltest.TestCase):
       config.parse_config("include 'nonexistent/file'")
 
   def testInvalidIncludeError(self):
-    config_file = '{}gin/testdata/invalid_include.gin'
-    path_prefix = absltest.get_default_test_srcdir()
+    config_file = os.path.join(
+        absltest.get_default_test_srcdir(),
+        'gin/testdata/invalid_include.gin')
     err_msg_regex = ('Unable to open file: not/a/valid/file.gin. '
                      'Searched config paths:')
     with six.assertRaisesRegex(self, IOError, err_msg_regex):
-      config.parse_config_file(config_file.format(path_prefix))
+      config.parse_config_file(config_file)
 
   def testExplicitParametersOverrideGin(self):
     config_str = """
@@ -453,7 +458,36 @@ class ConfigTest(absltest.TestCase):
     """
     with self.assertRaises(ImportError):
       config.parse_config(config_str)
-    config.parse_config(config_str, skip_unknown=True)
+    with absltest.mock.patch.object(logging, 'info') as mock_log:
+      config.parse_config(config_str, skip_unknown=True)
+      found_log = False
+      for log in mock_log.call_args_list:
+        log = log[0][0] % tuple(log[0][1:])
+        if 'not.a.real.module' in log:
+          if 'Traceback' in log:
+            self.fail('Traceback included for non-nested unknown import log.')
+          else:
+            found_log = True
+            break
+      self.assertTrue(
+          found_log, msg='Did not log import error.')
+
+  def testSkipUnknownNestedImport(self):
+    config_str = """
+      import gin.testdata.invalid_import
+    """
+    with self.assertRaises(ImportError):
+      config.parse_config(config_str)
+    with absltest.mock.patch.object(logging, 'info') as mock_log:
+      config.parse_config(config_str, skip_unknown=True)
+      found_log = False
+      for args, _ in mock_log.call_args_list:
+        log = args[0] % tuple(args[1:])
+        if 'gin.testdata.invalid_import' in log and 'Traceback' in log:
+          found_log = True
+          break
+      self.assertTrue(
+          found_log, msg='Did not log traceback of nested import error.')
 
   def testSkipUnknownReference(self):
     config_str = """
@@ -1240,7 +1274,7 @@ class ConfigTest(absltest.TestCase):
           (@nesting/macro(),)
       ]
       configurable2.kwarg1 = {
-          'nesting': {'like': ['a', (@pufferfish/macro(),)]}
+          'another': {'deeply': ['nested', (@structure/macro(),)]}
       }
     """
     config.parse_config(config_str)

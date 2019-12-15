@@ -12,9 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
+
 set -e
-set -x
 
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
 
@@ -30,13 +29,14 @@ fi
 # Finally, use cd and pwd to get an absolute path, in case a relative one was
 # given.
 mkdir -p "$1"
-DEST=$(dirname "${1}/does_not_exist")
-DEST=$(cd "$DEST" && pwd)
+dest=$(dirname "${1}/does_not_exist")
+dest=$(cd "${dest}" && pwd)
+readonly dest
 
 # Pass through remaining arguments (following the first argument, which
 # specifies the output dir) to setup.py, e.g.,
 #  ./pip_pkg /tmp/gin_config_pkg
-python setup.py bdist_wheel --universal ${@:2} --dist-dir="$DEST" >/dev/null
+python setup.py bdist_wheel --universal ${@:2} --dist-dir="${dest}" >/dev/null
 
 set +x
-echo -e "\nBuild complete. Wheel files are in $DEST"
+echo -e "\nBuild complete. Wheel files are in ${dest}."

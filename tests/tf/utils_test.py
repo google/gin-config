@@ -115,7 +115,7 @@ class GinConfigSaverHookTest(tf.test.TestCase):
   """
 
   def setUp(self):
-    tf.disable_eager_execution()
+    tf.compat.v1.disable_eager_execution()
     tf.compat.v1.reset_default_graph()
     config.clear_config()
 

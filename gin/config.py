@@ -93,7 +93,9 @@ import inspect
 import logging
 import os
 import pprint
+import sys
 import threading
+import traceback
 
 import enum
 
@@ -346,6 +348,9 @@ class ConfigurableReference(object):
 
   def __ne__(self, other):
     return not self.__eq__(other)
+
+  def __hash__(self):
+    return hash(repr(self))
 
   def __repr__(self):
     # Check if this reference is a macro or constant, i.e. @.../macro() or
@@ -1521,8 +1526,17 @@ def parse_config(bindings, skip_unknown=False):
           __import__(statement.module)
           _IMPORTED_MODULES.add(statement.module)
         except ImportError:
-          log_str = 'Skipping import of unknown module `%s` (skip_unknown=%r).'
-          logging.info(log_str, statement.module, skip_unknown)
+          tb_len = len(traceback.extract_tb(sys.exc_info()[2]))
+          log_str = ('Skipping import of unknown module `%s` '
+                     '(skip_unknown=True).')
+          log_args = [statement.module]
+          if tb_len > 1:
+            # In case the error comes from a nested import (i.e. the module is
+            # available, but it imports some unavailable module), print the
+            # traceback to avoid confusion.
+            log_str += '\n%s'
+            log_args.append(traceback.format_exc())
+          logging.info(log_str, *log_args)
       else:
         with utils.try_with_location(statement.location):
           __import__(statement.module)
@@ -1783,12 +1797,13 @@ def iterate_references(config, to=None):
 
 def validate_reference(ref, require_bindings=True, require_evaluation=False):
   if require_bindings and ref.config_key not in _CONFIG:
-    err_str = "No bindings specified for '{}'."
-    raise ValueError(err_str.format(ref.scoped_selector))
+    err_str = "No bindings specified for '{}' in config string: \n{}"
+    raise ValueError(err_str.format(ref.scoped_selector, config_str()))
 
   if require_evaluation and not ref.evaluate:
-    err_str = "Reference '{}' must be evaluated (add '()')."
-    raise ValueError(err_str.format(ref))
+    err_str = ("Reference '{}' must be evaluated (add '()') "
+               'in config string: \n{}.')
+    raise ValueError(err_str.format(ref, config_str()))
 
 
 @configurable(module='gin')
