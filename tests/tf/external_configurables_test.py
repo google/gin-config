@@ -20,7 +20,7 @@ from __future__ import print_function
 from gin import config
 from gin.tf import external_configurables  # pylint: disable=unused-import
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 # Necessary for AdagradaDAOptimizer test.
 config.external_configurable(tf.compat.v1.train.get_global_step)
