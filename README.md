@@ -363,8 +363,23 @@ include a dotted module name prefix (`some.module.function_name`).
   <tbody>
     <tr>
       <td><code>@gin.configurable</code></td>
-      <td>Decorator in Python code that registers a function with Gin,
-      automatically making its parameters configurable.</td>
+      <td>Decorator in Python code that registers a function or class with Gin,
+        wrapping/replacing it with a "configurable" version that respects Gin
+        parameter overrides. A function or class annotated with
+        `@gin.configurable` will have its parameters overridden by any provided
+        configs even when called directly from other Python code.
+      .</td>
+    </tr>
+    <tr>
+      <td><code>@gin.register</code></td>
+      <td>Decorator in Python code that only registers a function or class with
+        Gin, but does *not* replace it with its "configurable" version.
+        Functions or classes annotated with `@gin.register` will *not* have
+        their parameters overridden by Gin configs when called directly from
+        other Python code. However, any references in config strings or files to
+        these functions (`@some_name` syntax, see below) will apply any provided
+        configuration.
+      </td>
     </tr>
     <tr>
       <td><code>name.param&nbsp;=&nbsp;value</code></td>

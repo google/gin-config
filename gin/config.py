@@ -1297,6 +1297,95 @@ def external_configurable(fn_or_cls,
       subclass=True)
 
 
+def register(name_or_fn=None, module=None, whitelist=None, blacklist=None):
+  """Decorator to register a function or class configurable.
+
+  This decorator only registers the decorated function/class with Gin, so it can
+  be passed to other configurables in `bind_parameter` or `parse_config`.
+  This decorator doesn't change the decorated function/class, so any direct
+  calls from within Python code are not affected by the configuration.
+
+  If some parameters should not be configurable, they can be specified in
+  `blacklist`. If only a restricted set of parameters should be configurable,
+  they can be specified in `whitelist`.
+
+  The decorator can be used without any parameters as follows:
+
+      @config.register
+      def some_configurable_function(param1, param2='a default value'):
+        ...
+
+  In this case, the function is associated with the name
+  `'some_configurable_function'` in the configuration, and both `param1`
+  and `param2` are configurable.
+
+  The decorator can be supplied with parameters to specify the name used to
+  register or supply a whitelist/blacklist:
+
+      @config.register('explicit_name', whitelist='param2')
+      def some_configurable_function(param1, param2='a default value'):
+        ...
+
+  In this case, the function is registered with the name `'explicit_name'` in
+  the configuration registry, and only `param2` is configurable.
+
+  Classes can be decorated as well, in which case parameters of their
+  constructors are made configurable:
+
+      @config.register
+      class SomeClass(object):
+        def __init__(self, param1, param2='a default value'):
+          ...
+
+  In this case, the name of the configurable is `'SomeClass'`, and both `param1`
+  and `param2` are configurable.
+
+  Args:
+    name_or_fn: A name for this configurable, or a function to decorate (in
+      which case the name will be taken from that function). If not set,
+      defaults to the name of the function/class that is being made
+      configurable. If a name is provided, it may also include module components
+      to be used for disambiguation (these will be appended to any components
+      explicitly specified by `module`).
+    module: The module to associate with the configurable, to help handle naming
+      collisions. By default, the module of the function or class being made
+      configurable will be used (if no module is specified as part of the name).
+    whitelist: A whitelisted set of kwargs that should be configurable. All
+      other kwargs will not be configurable. Only one of `whitelist` or
+      `blacklist` should be specified.
+    blacklist: A blacklisted set of kwargs that should not be configurable. All
+      other kwargs will be configurable. Only one of `whitelist` or `blacklist`
+      should be specified.
+
+  Returns:
+    When used with no parameters as a decorator (or with a function/class
+    supplied as the first parameter), it returns the target function or class
+    unchanged. When used with parameters, it returns a function that can be
+    applied to register the target function or class with Gin (this function
+    also returns the target function or class unchanged).
+  """
+  decoration_target = None
+  if callable(name_or_fn):
+    decoration_target = name_or_fn
+    name = None
+  else:
+    name = name_or_fn
+
+  def perform_decoration(fn_or_cls):
+    # Register it as configurable but return the orinal fn_or_cls.
+    _make_configurable(fn_or_cls,
+                       name=name,
+                       module=module,
+                       whitelist=whitelist,
+                       blacklist=blacklist,
+                       subclass=True)
+    return fn_or_cls
+
+  if decoration_target:
+    return perform_decoration(decoration_target)
+  return perform_decoration
+
+
 def _config_str(configuration_object,
                 max_line_length=80,
                 continuation_indent=4):

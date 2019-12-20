@@ -34,6 +34,7 @@ from gin.config import parse_config
 from gin.config import parse_config_file
 from gin.config import parse_config_files_and_bindings
 from gin.config import query_parameter
+from gin.config import register
 from gin.config import REQUIRED
 from gin.config import unlock_config
 

@@ -254,6 +254,16 @@ class ConfigurableNamedTuple(NamedTuple):
   pass
 
 
+@config.register
+class RegisteredExternalNamedTuple(NamedTuple):
+  pass
+
+
+@config.configurable
+def create_named_tuple(named_tuple, *args):
+  return named_tuple(*args)
+
+
 configurable_external_named_tuple = config.external_configurable(
     NamedTuple, 'ExternalConfigurableNamedTuple')
 
@@ -826,6 +836,25 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(configurable_named_tuple.field2, 'field2')
 
     configurable_named_tuple = configurable_external_named_tuple()
+    self.assertEqual(configurable_named_tuple.field1, 'external_field1')
+    self.assertEqual(configurable_named_tuple.field2, 'external_field2')
+
+  def testRegisteredExternalNamedTuple(self):
+    config_str = """
+      RegisteredExternalNamedTuple.field1 = 'external_field1'
+      RegisteredExternalNamedTuple.field2 = 'external_field2'
+      create_named_tuple.named_tuple = @RegisteredExternalNamedTuple
+    """
+    config.parse_config(config_str)
+
+    # expected = '__new__() takes exactly 3 arguments (1 given)'
+    with self.assertRaises(TypeError):
+      RegisteredExternalNamedTuple()
+
+    with self.assertRaises(TypeError):
+      create_named_tuple(RegisteredExternalNamedTuple)
+
+    configurable_named_tuple = create_named_tuple(config.REQUIRED)
     self.assertEqual(configurable_named_tuple.field1, 'external_field1')
     self.assertEqual(configurable_named_tuple.field2, 'external_field2')
 
