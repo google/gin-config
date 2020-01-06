@@ -54,11 +54,18 @@ Import Gin (without TensorFlow functionality):
 import gin
 ```
 
-Import additional TensorFlow-specific functionality via the TF module:
+Import additional TensorFlow-specific functionality via the `gin.tf` module:
 
 ```python
 import gin.tf
 ```
+
+Import additional PyTorch-specific functionality via the `gin.torch` module:
+
+```python
+import gin.torch
+```
+
 
 ### 2. Configuring default values with Gin (`@gin.configurable` and "bindings")
 

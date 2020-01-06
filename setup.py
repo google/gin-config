@@ -22,7 +22,7 @@ from os import path
 from setuptools import find_packages
 from setuptools import setup
 
-_VERSION = '0.3.0'
+_VERSION = '0.4.0'
 
 here = path.abspath(path.dirname(__file__))
 
@@ -59,6 +59,8 @@ setup(
         'tensorflow': ['tensorflow >= 1.13.0'],
         'tensorflow-gpu': ['tensorflow-gpu >= 1.13.0'],
         'tf-nightly': ['tf-nightly'],
+        'torch': ['torch >= 1.3.0'],
+        'pytorch-nightly': ['pytorch-nightly'],
         'testing': [
             'six >= 1.10.0',
             'absl-py >= 0.1.6',

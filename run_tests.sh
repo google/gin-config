@@ -37,15 +37,15 @@ run_tests() {
   # TensorFlow isn't a regular dependency because there are many different pip
   # packages a user might have installed.
   if [[ "$stability" == "stable" ]] ; then
-    local -r extras=tensorflow
+    local -r extras=tensorflow,torch
   elif [[ $stability == "nightly" ]] ; then
-    local -r extras=tf-nightly
+    local -r extras=tf-nightly,pytorch-nightly
   else
     echo "Error: Unknown stability ${stability}, pass either nightly or stable."
     exit 1
   fi
 
-  # Install dependencies.
+  # Install Gin and dependencies.
   pip install ".[testing,${extras}]"
 
   # Find the tests.
@@ -61,15 +61,23 @@ run_tests() {
     nosetests "${test_file}"
   done
 
-  # Test installing the Gin package.
+  # Uninstall Gin (deps remain) to properly test installing from package.
+  pip uninstall -y gin-config
+
+  # Test packaging and then installing the Gin package.
   local -r wheel_path="${tmp}/wheel/${python_version}"
   ./pip_pkg.sh ${wheel_path}/
 
   pip install ${wheel_path}/gin_config*.whl
 
-  # Move away from repo directory so "import gin.tf" refers to the
-  # installed wheel and not to the local fs.
-  (cd $(mktemp -d) && python -c 'import gin.tf')
+# Move away from repo directory so "import gin.tf" refers to the installed wheel
+# and not to the local filesystem. This just test some basic imports, relying
+# on the leftover installations of tensorflow and torch from above.
+  pushd $(mktemp -d)
+  python -c 'import gin'
+  python -c 'import gin.tf'
+  python -c 'import gin.torch'
+  popd
 
   # Deactivate virtualenv
   deactivate

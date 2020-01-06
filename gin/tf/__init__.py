@@ -22,11 +22,11 @@
 # needs to happen before anything else, since the imports below will try to
 # import tensorflow, too.
 def _ensure_tf_install():  # pylint: disable=g-statement-before-imports
-  """Attempt to import tensorflow, and ensure its version is sufficient.
+  """Attempt to import TensorFlow, and ensure its version is sufficient.
 
   Raises:
-    ImportError: if either tensorflow is not importable or its version is
-    inadequate.
+    ImportError: If either TensorFlow is not importable or its version is
+      inadequate.
   """
   try:
     import tensorflow as tf
@@ -34,14 +34,14 @@ def _ensure_tf_install():  # pylint: disable=g-statement-before-imports
     # Print more informative error message, then reraise.
     print("\n\nFailed to import TensorFlow. Please note that TensorFlow is not "
           "installed by default when you install Gin-Config. This is so that "
-          "users can decide whether to install the GPU-enabled TensorFlow "
-          "package. To use Gin-Config, please install the most recent version "
-          "of TensorFlow, by following instructions at "
-          "https://tensorflow.org/install.\n\n")
+          "users can decide whether to install TensorFlow, GPU-enabled "
+          "Tensorflow, or PyTorch. To use Gin-Config with TensorFlow, please "
+          "install the most recent version of TensorFlow, by following "
+          "instructions at https://tensorflow.org/install.\n\n")
     raise
 
   # Update this whenever we need to depend on a newer TensorFlow release.
-  required_tensorflow_version = "1.12.0"
+  required_tensorflow_version = "1.13.0"
 
   import distutils.version
 
