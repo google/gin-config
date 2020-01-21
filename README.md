@@ -162,7 +162,7 @@ Then, within a config file:
 
 ```python
 # Inside "config.gin"
-train_fn.optimizer_cls = @tf.train.GradientDesecentOptimizer
+train_fn.optimizer_cls = @tf.train.GradientDescentOptimizer
 ...
 ```
 
