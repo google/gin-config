@@ -262,6 +262,16 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, subclass=False):
   decorated_fn = decorator(_ensure_wrappability(construction_fn))
   if construction_fn.__name__ == '__new__':
     decorated_fn = staticmethod(decorated_fn)
+  elif subclass:
+    # this ensures picklability, as we produce the original class instance,
+    # the implicit inheritance is skipped
+    def hijacking_new(klass, *args, **kwargs):
+      if klass is DecoratedClass:
+        klass = fn_or_cls
+      obj = fn_or_cls.__new__(klass, *args, **kwargs)
+      decorated_fn(obj, *args, **kwargs)
+      return obj
+    setattr(cls, '__new__', hijacking_new)
   setattr(cls, construction_fn.__name__, decorated_fn)
   return cls
 

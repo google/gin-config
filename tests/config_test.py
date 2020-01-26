@@ -20,6 +20,7 @@ import inspect
 import io
 import logging
 import os
+import pickle
 import threading
 
 from absl.testing import absltest
@@ -298,6 +299,16 @@ class ExternalClass:
 configurable_external_class = config.external_configurable(
     ExternalClass, 'ExternalConfigurable')
 config.external_configurable(ExternalClass, 'module.ExternalConfigurable2')
+
+
+class ExternalImportableClass(object):
+  """As above, but now importable"""
+  def __init__(self, kwarg1=None, kwarg2=None):
+    self.kwarg1 = kwarg1
+    self.kwarg2 = kwarg2
+
+config.external_configurable(
+  ExternalImportableClass, 'ExternalImportableClass')
 
 
 @config.configurable
@@ -645,6 +656,10 @@ class ConfigTest(absltest.TestCase):
     instance = ConfigurableClass()
     self.assertEqual(instance.kwarg1, 'statler')
     self.assertEqual(instance.kwarg2, 'waldorf')
+    try:
+      pickle.dumps(instance)
+    except:
+      self.fail('Configurable class not picklable')
 
   def testConfigurableReferenceClassIdentityIsPreserved(self):
     config_str = """
@@ -686,13 +701,21 @@ class ConfigTest(absltest.TestCase):
     # subclasses of the original class are not subclasses of the reference.
     self.assertFalse(issubclass(sub_cls_ref, super_cls_ref))
     self.assertNotIsInstance(sub_instance, super_cls_ref)
-    self.assertNotIsInstance(sub_instance, type(super_instance))
+
+    # Because we skip the creation of wrapper class by instatiating the
+    # original class, subinstances are subclass of the super instance type.
+    self.assertIsInstance(sub_instance, type(super_instance))
 
     self.assertEqual(super_instance.kwarg1, 'one')
     self.assertIsNone(super_instance.kwarg2)
     self.assertEqual(sub_instance.kwarg1, 'some')
     self.assertIsNone(sub_instance.kwarg2)
     self.assertEqual(sub_instance.kwarg3, 'thing')
+
+    try:
+      pickle.dumps(sub_instance)
+    except:
+      self.fail('Configurable subclass not picklable')
 
   def testConfigurableMethod(self):
     config_str = """
@@ -723,6 +746,17 @@ class ConfigTest(absltest.TestCase):
     self.assertIsInstance(instance, ExternalClass)
     self.assertEqual(instance.kwarg1, 'statler')
     self.assertEqual(instance.kwarg2, 'waldorf')
+
+    config_str = """
+      ConfigurableClass.kwarg1 = @ExternalImportableClass
+    """
+    config.parse_config(config_str)
+    configurable_class = ConfigurableClass()
+    instance = configurable_class.kwarg1()
+    try:
+      pickle.dumps(instance)
+    except:
+      self.fail('External configurable class not picklable')
 
   def testAbstractExternalConfigurableClass(self):
     config_str = """
