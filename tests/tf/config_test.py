@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import gin.tf
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 
 class TFConfigTest(tf.test.TestCase):

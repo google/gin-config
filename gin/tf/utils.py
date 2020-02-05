@@ -23,7 +23,7 @@ import os
 
 from gin import config
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.core.framework import summary_pb2
