@@ -47,7 +47,7 @@ class ParserDelegate(object):
   __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
-  def configurable_reference(self, scoped_configurable_name, evaluate):
+  def configurable_reference(self, scoped_configurable_name, evaluate, args=None):
     """Called to construct an object representing a configurable reference.
 
     Args:
@@ -58,6 +58,10 @@ class ParserDelegate(object):
     Returns:
       Should return an object representing the configurable reference.
     """
+    pass
+
+  @abc.abstractmethod
+  def ordinary_reference(self, reference_name, evaluate, args=None):
     pass
 
   @abc.abstractmethod
@@ -241,7 +245,8 @@ class ConfigParser(object):
     """
     parsers = [
         self._maybe_parse_container, self._maybe_parse_basic_type,
-        self._maybe_parse_configurable_reference, self._maybe_parse_macro
+        self._maybe_parse_configurable_reference, self._maybe_parse_macro,
+        self._maybe_parse_ordinary_reference
     ]
     for parser in parsers:
       success, value = parser()
@@ -353,6 +358,7 @@ class ConfigParser(object):
 
     return scoped_selector
 
+
   def _maybe_parse_container(self):
     """Try to parse a container type (dict, list, or tuple)."""
     bracket_types = {
@@ -393,7 +399,7 @@ class ConfigParser(object):
       token_value += self._current_token.value
       self._advance()
 
-    basic_type_tokens = [tokenize.NAME, tokenize.NUMBER, tokenize.STRING]
+    basic_type_tokens = [tokenize.NUMBER, tokenize.STRING]
     continue_parsing = self._current_token.kind in basic_type_tokens
     if not continue_parsing:
       return False, None
@@ -414,6 +420,53 @@ class ConfigParser(object):
 
     return True, value
 
+  def _maybe_parse_ordinary_reference(self):
+    location = self._current_location()
+
+    if self._current_token.kind != tokenize.NAME:
+      self._raise_syntax_error('Unexpected token.')
+
+    begin_line_num = self._current_token.begin[0]
+    begin_char_num = self._current_token.begin[1]
+    end_char_num = self._current_token.end[1]
+    line = self._current_token.line
+
+    selector_parts = []
+    step_parity = 0
+    while (step_parity == 0 and self._current_token.kind == tokenize.NAME or
+           step_parity == 1 and self._current_token.value == '.'):
+      selector_parts.append(self._current_token.value)
+      step_parity = not step_parity
+      end_char_num = self._current_token.end[1]
+      self._advance_one_token()
+    self._skip_whitespace_and_comments()
+
+    full_selector = ''.join(selector_parts)
+    untokenized_scoped_selector = line[begin_char_num:end_char_num]
+    valid_format = MODULE_RE.match(full_selector)
+
+    if untokenized_scoped_selector != full_selector or not valid_format:
+      location = (self._filename, begin_line_num, begin_char_num + 1, line)
+      self._raise_syntax_error('Malformatted selector.', location)
+
+    evaluate = False
+    args = None
+    if self._current_token.value == '(':
+      self._advance()
+      args = []
+      while self._current_token.value != ')':
+        args.append(self.parse_value())
+        if self._current_token.value == ',':
+          self._advance()
+        elif self._current_token.value != ')':
+          self._raise_syntax_error("Expected ',' or '%s'." % ')')
+      self._advance()
+      evaluate = True
+
+    with utils.try_with_location(location):
+      reference = self._delegate.ordinary_reference(full_selector, evaluate, args)
+    return True, reference
+
   def _maybe_parse_configurable_reference(self):
     """Try to parse a configurable reference (@[scope/name/]fn_name[()])."""
     if self._current_token.value != '@':
@@ -424,16 +477,23 @@ class ConfigParser(object):
     scoped_name = self._parse_selector(allow_periods_in_scope=True)
 
     evaluate = False
+    args = None
     if self._current_token.value == '(':
-      evaluate = True
       self._advance()
-      if self._current_token.value != ')':
-        self._raise_syntax_error("Expected ')'.")
-      self._advance_one_token()
+      args = []
+      while self._current_token.value != ')':
+        args.append(self.parse_value())
+        if self._current_token.value == ',':
+          self._advance()
+        elif self._current_token.value != ')':
+          self._raise_syntax_error("Expected ',' or '%s'." % ')')
+      self._advance()
+      evaluate = True
+
     self._skip_whitespace_and_comments()
 
     with utils.try_with_location(location):
-      reference = self._delegate.configurable_reference(scoped_name, evaluate)
+      reference = self._delegate.configurable_reference(scoped_name, evaluate, args)
 
     return True, reference
 

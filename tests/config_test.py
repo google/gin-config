@@ -1635,6 +1635,69 @@ class ConfigTest(absltest.TestCase):
     config.add_config_file_search_path(absolute_testdata_path)
     config.parse_config_files_and_bindings([gin_file], None)
 
+  def testReferVariable(self):
+    @config.configurable
+    def test_add(a, b):
+      return a + b
+
+    # Local variable
+    config.parse_config([
+      'A=3',
+      'test_add.a=%A',
+      'test_add.b=b'])
+    b = 5
+    self.assertEqual(test_add(), 3 + 5)
+    b = 3
+    self.assertEqual(test_add(), 3 + 3)
+
+    # Global variable
+    import numpy as np
+    config.clear_config()
+    config.parse_config([
+      'A=3',
+      'test_add.a=%A',
+      'test_add.b=np.pi'])
+    self.assertEqual(test_add(), 3 + np.pi)
+
+  def testReferUnregisteredFunction(self):
+    @config.configurable
+    def test_func(func):
+      return func()
+
+    def un_registered_func():
+      return 2
+
+    config.parse_config([
+      'test_func.func=un_registered_func'
+    ])
+    self.assertEqual(test_func(), 2)
+
+  def testReferFunctionCall(self):
+    @config.configurable
+    def registered_add(a, b):
+      return a + b
+
+    def unregistered_add(a, b):
+      return a + b
+
+    @config.configurable
+    def test_sum(a, b, c, d):
+      return a + b + c + d
+
+    config.parse_config([
+      'A=1',
+      'B=2',
+      'C=3',
+      'D=4',
+      'test_sum.a=%A',
+      'test_sum.b=@registered_add(%B, b)',
+      'test_sum.c=unregistered_add(%C, c)',
+      'test_sum.d=sum([@registered_add(%D, d), unregistered_add(%D, d)])'
+    ])
+    a, b, c, d = 1, 2, 3, 4
+    self.assertEqual(test_sum(), 27)
+    a, b, c, d = -1, -2, -3, -4
+    self.assertEqual(test_sum(), 1)
 
 if __name__ == '__main__':
   absltest.main()

@@ -283,13 +283,39 @@ def _raise_unknown_reference_error(ref, additional_msg=''):
   maybe_parens = '()' if ref.evaluate else ''
   raise ValueError(err_str.format(ref.selector, maybe_parens, additional_msg))
 
+class OrdinaryReference(object):
+  def __init__(self, selector, evaluate, args=None):
+    self._selector = selector
+    self._evaluate = evaluate
+    self._args = args
+
+  def __deepcopy__(self, memo):
+    ref = eval(self._selector, memo['f_locals'], memo['f_globals'])
+    if not self._evaluate:
+      return ref
+    if self._args:
+      args = copy.deepcopy(self._args, memo=memo)
+      return ref(*args)
+    return ref()
+
+
+  def __repr__(self):
+    maybe_parens = ''
+    if self._evaluate:
+      maybe_parens = '()'
+      if self._args:
+        maybe_parens = '(' + ', '.join([repr(arg) for arg in self._args]) + ')'
+    return '{}{}'.format(self._selector, maybe_parens)
+
+
 
 class ConfigurableReference(object):
   """Represents a reference to a configurable function or class."""
 
-  def __init__(self, scoped_selector, evaluate):
+  def __init__(self, scoped_selector, evaluate, args=None):
     self._scoped_selector = scoped_selector
     self._evaluate = evaluate
+    self._args = args
 
     scoped_selector_parts = self._scoped_selector.split('/')
     self._scopes = scoped_selector_parts[:-1]
@@ -358,7 +384,12 @@ class ConfigurableReference(object):
     configurable_fn = self._configurable.fn_or_cls
     if configurable_fn in (macro, _retrieve_constant) and self._evaluate:
       return '%' + '/'.join(self._scopes)
-    maybe_parens = '()' if self._evaluate else ''
+    maybe_parens = ''
+    if self._evaluate:
+      maybe_parens = '()'
+      if self._args:
+        maybe_parens = '(' + ', '.join([repr(arg) for arg in self._args]) + ')'
+
     return '@{}{}'.format(self._scoped_selector, maybe_parens)
 
   def __deepcopy__(self, memo):
@@ -381,6 +412,9 @@ class ConfigurableReference(object):
       `True`, returns the output of calling the underlying configurable.
     """
     if self._evaluate:
+      if self._args:
+        args = copy.deepcopy(self._args, memo=memo)
+        return self._scoped_configurable_fn(*args)
       return self._scoped_configurable_fn()
     return self._scoped_configurable_fn
 
@@ -443,11 +477,14 @@ class ParserDelegate(config_parser.ParserDelegate):
   def __init__(self, skip_unknown=False):
     self._skip_unknown = skip_unknown
 
-  def configurable_reference(self, scoped_selector, evaluate):
+  def configurable_reference(self, scoped_selector, evaluate, args=None):
     unscoped_selector = scoped_selector.rsplit('/', 1)[-1]
     if _should_skip(unscoped_selector, self._skip_unknown):
       return _UnknownConfigurableReference(scoped_selector, evaluate)
-    return ConfigurableReference(scoped_selector, evaluate)
+    return ConfigurableReference(scoped_selector, evaluate, args)
+
+  def ordinary_reference(self, reference_name, evaluate, args=None):
+    return OrdinaryReference(reference_name, evaluate, args)
 
   def macro(self, name):
     matching_selectors = _CONSTANTS.matching_selectors(name)
@@ -1015,7 +1052,9 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
     # `ConfigurableReference` instances buried somewhere inside `new_kwargs`.
     # See the docstring on `ConfigurableReference.__deepcopy__` above for more
     # details on the dark magic happening here.
-    new_kwargs = copy.deepcopy(new_kwargs)
+    frame = sys._getframe(1)
+    f_locals_globals = dict(f_locals=frame.f_locals, f_globals=frame.f_globals)
+    new_kwargs = copy.deepcopy(new_kwargs, memo=f_locals_globals)
 
     # Validate args marked as REQUIRED have been bound in the Gin config.
     missing_required_params = []
