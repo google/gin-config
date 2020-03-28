@@ -287,9 +287,10 @@ def _raise_unknown_reference_error(ref, additional_msg=''):
 class ConfigurableReference(object):
   """Represents a reference to a configurable function or class."""
 
-  def __init__(self, scoped_selector, evaluate):
+  def __init__(self, scoped_selector, evaluate, kwargs=None):
     self._scoped_selector = scoped_selector
     self._evaluate = evaluate
+    self._kwargs = kwargs or {}
 
     scoped_selector_parts = self._scoped_selector.split('/')
     self._scopes = scoped_selector_parts[:-1]
@@ -358,7 +359,11 @@ class ConfigurableReference(object):
     configurable_fn = self._configurable.fn_or_cls
     if configurable_fn in (macro, _retrieve_constant) and self._evaluate:
       return '%' + '/'.join(self._scopes)
-    maybe_parens = '()' if self._evaluate else ''
+    maybe_parens = ''
+    if self._evaluate:
+      kwargs = ', '.join(['{}={}'.format(arg_name, repr(arg_value))
+                          for arg_name, arg_value in self._kwargs.items()])
+      maybe_parens = '(' + kwargs + ')'
     return '@{}{}'.format(self._scoped_selector, maybe_parens)
 
   def __deepcopy__(self, memo):
@@ -381,7 +386,10 @@ class ConfigurableReference(object):
       `True`, returns the output of calling the underlying configurable.
     """
     if self._evaluate:
-      return self._scoped_configurable_fn()
+      kwargs = {}
+      if self._kwargs:
+        kwargs = copy.deepcopy(self._kwargs)
+      return self._scoped_configurable_fn(**kwargs)
     return self._scoped_configurable_fn
 
 
@@ -392,9 +400,10 @@ class _UnknownConfigurableReference(object):
   doesn't match any known configurable.
   """
 
-  def __init__(self, selector, evaluate):
+  def __init__(self, selector, evaluate, kwargs=None):
     self._selector = selector.split('/')[-1]
     self._evaluate = evaluate
+    self._kwargs = kwargs
 
   @property
   def selector(self):
@@ -443,11 +452,11 @@ class ParserDelegate(config_parser.ParserDelegate):
   def __init__(self, skip_unknown=False):
     self._skip_unknown = skip_unknown
 
-  def configurable_reference(self, scoped_selector, evaluate):
+  def configurable_reference(self, scoped_selector, evaluate, kwargs=None):
     unscoped_selector = scoped_selector.rsplit('/', 1)[-1]
     if _should_skip(unscoped_selector, self._skip_unknown):
       return _UnknownConfigurableReference(scoped_selector, evaluate)
-    return ConfigurableReference(scoped_selector, evaluate)
+    return ConfigurableReference(scoped_selector, evaluate, kwargs)
 
   def macro(self, name):
     matching_selectors = _CONSTANTS.matching_selectors(name)

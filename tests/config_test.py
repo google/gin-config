@@ -699,6 +699,17 @@ class ConfigTest(absltest.TestCase):
     instance, _ = configurable2()  # pylint: disable=no-value-for-parameter
     self.assertEqual(instance.implement_me(), 'bananaphone')
 
+  def testConfigurableWithFunctioncall(self):
+    config_str = """   
+          M = 'macro'       
+          ConfigurableClass.kwarg1 = @configurable2(non_kwarg='statler')
+          ConfigurableClass.kwarg2 = @configurable2(non_kwarg=%M, kwarg1='waldorf')
+    """
+    config.parse_config(config_str)
+    instance = ConfigurableClass()
+    self.assertEqual(instance.kwarg1, ('statler', None))
+    self.assertEqual(instance.kwarg2, ('macro', 'waldorf'))
+
   def testExternalConfigurableClass(self):
     config_str = """
       ConfigurableClass.kwarg1 = @ExternalConfigurable
