@@ -284,6 +284,22 @@ def _raise_unknown_reference_error(ref, additional_msg=''):
   raise ValueError(err_str.format(ref.selector, maybe_parens, additional_msg))
 
 
+class IdentifierReference(object):
+  """Represents reference to a function or class or variable"""
+
+  def __init__(self, identifier):
+    self._identifier = identifier
+
+
+  def __repr__(self):
+    return self._identifier
+
+  def __deepcopy__(self, memo):
+    frame = memo['_frame']
+    return eval(self._identifier, frame.f_locals, frame.f_globals)
+
+
+
 class ConfigurableReference(object):
   """Represents a reference to a configurable function or class."""
 
@@ -448,6 +464,9 @@ class ParserDelegate(config_parser.ParserDelegate):
     if _should_skip(unscoped_selector, self._skip_unknown):
       return _UnknownConfigurableReference(scoped_selector, evaluate)
     return ConfigurableReference(scoped_selector, evaluate)
+
+  def identifier_reference(self, identifier):
+    return IdentifierReference(identifier)
 
   def macro(self, name):
     matching_selectors = _CONSTANTS.matching_selectors(name)
@@ -1015,7 +1034,7 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
     # `ConfigurableReference` instances buried somewhere inside `new_kwargs`.
     # See the docstring on `ConfigurableReference.__deepcopy__` above for more
     # details on the dark magic happening here.
-    new_kwargs = copy.deepcopy(new_kwargs)
+    new_kwargs = copy.deepcopy(new_kwargs, memo=dict(_frame=sys._getframe(1)))
 
     # Validate args marked as REQUIRED have been bound in the Gin config.
     missing_required_params = []

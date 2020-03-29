@@ -61,6 +61,19 @@ class ParserDelegate(object):
     pass
 
   @abc.abstractmethod
+  def identifier_reference(self, identifier):
+    """Called to construct an object representing a identifier reference
+
+    Args:
+      identifier: The name of the reference
+
+    Returns:
+      Should return an object representing the reference.
+    """
+    pass
+
+
+  @abc.abstractmethod
   def macro(self, macro_name):
     """Called to construct an object representing an macro.
 
@@ -241,7 +254,8 @@ class ConfigParser(object):
     """
     parsers = [
         self._maybe_parse_container, self._maybe_parse_basic_type,
-        self._maybe_parse_configurable_reference, self._maybe_parse_macro
+        self._maybe_parse_configurable_reference, self._maybe_parse_macro,
+        self._maybe_parse_identifier_reference
     ]
     for parser in parsers:
       success, value = parser()
@@ -393,8 +407,9 @@ class ConfigParser(object):
       token_value += self._current_token.value
       self._advance()
 
-    basic_type_tokens = [tokenize.NAME, tokenize.NUMBER, tokenize.STRING]
-    continue_parsing = self._current_token.kind in basic_type_tokens
+    basic_type_tokens = [tokenize.NUMBER, tokenize.STRING]
+    continue_parsing = (self._current_token.kind in basic_type_tokens
+                        or self._current_token.value in ['None', 'True', 'False'])
     if not continue_parsing:
       return False, None
 
@@ -436,6 +451,42 @@ class ConfigParser(object):
       reference = self._delegate.configurable_reference(scoped_name, evaluate)
 
     return True, reference
+
+  def _maybe_parse_identifier_reference(self):
+    """Try to parse a identifier reference([package.package.]var_or_fn_or_cls_name[()])"""
+    location = self._current_location()
+
+    if self._current_token.kind != tokenize.NAME:
+      self._raise_syntax_error('Unexpected token.')
+
+    begin_line_num = self._current_token.begin[0]
+    begin_char_num = self._current_token.begin[1]
+    end_char_num = self._current_token.end[1]
+    line = self._current_token.line
+
+    identifier_parts = []
+    # This accepts an alternating sequence of NAME  or '.' tokens.
+    step_parity = 0
+    while (step_parity == 0 and self._current_token.kind == tokenize.NAME or
+           step_parity == 1 and self._current_token.value =='.'):
+      identifier_parts.append(self._current_token.value)
+      step_parity = not step_parity
+      end_char_num = self._current_token.end[1]
+      self._advance_one_token()
+    self._skip_whitespace_and_comments()
+    identifier = ''.join(identifier_parts)
+    untokenized_identifier = line[begin_char_num:end_char_num]
+    valid_format = MODULE_RE.match(identifier)
+    if untokenized_identifier != identifier or not valid_format:
+      location = (self._filename, begin_line_num, begin_char_num + 1, line)
+      self._raise_syntax_error('Malformatted identifier.', location)
+
+    self._skip_whitespace_and_comments()
+
+    with utils.try_with_location(location):
+      reference = self._delegate.identifier_reference(identifier)
+    return True, reference
+
 
   def _maybe_parse_macro(self):
     """Try to parse an macro (%scope/name)."""
