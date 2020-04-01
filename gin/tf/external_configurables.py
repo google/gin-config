@@ -66,6 +66,11 @@ config.external_configurable(
 config.external_configurable(
     tf.compat.v1.losses.sparse_softmax_cross_entropy, module='tf.losses')
 
+# Maths.
+
+config.external_configurable(
+    tf.math.squared_difference, module='tf.math')
+
 # Optimizers.
 
 config.external_configurable(
