@@ -453,7 +453,7 @@ class ConfigParser(object):
     return True, reference
 
   def _maybe_parse_identifier_reference(self):
-    """Try to parse a identifier reference([package.package.]var_or_fn_or_cls_name[()])"""
+    """Try to parse a identifier reference([package.package.]var_or_fn_or_cls_name"""
     location = self._current_location()
 
     if self._current_token.kind != tokenize.NAME:
