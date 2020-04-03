@@ -189,7 +189,7 @@ or
 
 ```python
 # Inside "config.gin"
-build_model.network_fin=@DNN(num_outputs=15)
+build_model.network_fn=@DNN(num_outputs=15)
 ```
 
 To use evaluated references, all of the referenced function or class's
