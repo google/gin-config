@@ -168,7 +168,7 @@ train_fn.optimizer_cls = @tf.train.GradientDescentOptimizer
 
 Sometimes it is necessary to pass the result of calling a specific function or
 class constructor. Gin supports "evaluating" configurable references via the
-`@name()` syntax. For example, say we wanted to use the class form of `DNN` from
+`@name(**kwargs)` syntax. For example, say we wanted to use the class form of `DNN` from
 above (which implements `__call__` to "behave" like a function) in the following
 Python code:
 
@@ -183,6 +183,13 @@ We could pass an instance of the `DNN` class to the `network_fn` parameter:
 ```python
 # Inside "config.gin"
 build_model.network_fn = @DNN()
+```
+
+or 
+
+```python
+# Inside "config.gin"
+build_model.network_fin=@DNN(num_outputs=15)
 ```
 
 To use evaluated references, all of the referenced function or class's
@@ -330,7 +337,7 @@ Gin is still in alpha development and some corner-case behaviors may be
 changed in backwards-incompatible ways. We recommend the following best
 practices:
 
--   Minimize use of evaluated configurable references (`@name()`), especially
+-   Minimize use of evaluated configurable references (`@name(**kwargs)`), especially
     when combined with macros (where the fact that the value is not cached may
     be surprising to new users).
 -   Avoid nesting of scopes (i.e., `scope1/scope2/function_name`). While
