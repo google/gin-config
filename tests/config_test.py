@@ -699,7 +699,6 @@ class ConfigTest(absltest.TestCase):
     instance, _ = configurable2()  # pylint: disable=no-value-for-parameter
     self.assertEqual(instance.implement_me(), 'bananaphone')
 
-
   def testLocalVariableReference(self):
     config_str = """
           configurable2.non_kwarg = a
@@ -722,6 +721,29 @@ class ConfigTest(absltest.TestCase):
     import numpy
     instance, _ = configurable2()  # pylint: disable=no-value-for-parameter
     self.assertEqual(instance, numpy.abs)
+
+
+  def testConfigurableEvaluateWithKeywordargs(self):
+    config_str = """   
+          M = 'macro'       
+          ConfigurableClass.kwarg1 = @configurable2(non_kwarg='statler')
+          ConfigurableClass.kwarg2 = @configurable2(non_kwarg=%M, kwarg1='waldorf')
+    """
+    config.parse_config(config_str)
+    instance = ConfigurableClass()
+    self.assertEqual(instance.kwarg1, ('statler', None))
+    self.assertEqual(instance.kwarg2, ('macro', 'waldorf'))
+
+    config_str = """   
+          M = 'macro' 
+          ConfigurableClass.kwarg1 = @configurable2(non_kwarg=(1,2,3))                
+          ConfigurableClass.kwarg2 = @configurable2(non_kwarg=[%M, 1, {'name': 'statler'}])
+    """
+    config.clear_config()
+    config.parse_config(config_str)
+    instance = ConfigurableClass()
+    self.assertEqual(instance.kwarg1, ((1,2,3), None))
+    self.assertEqual(instance.kwarg2, (['macro', 1, {'name': 'statler'}], None))
 
   def testExternalConfigurableClass(self):
     config_str = """

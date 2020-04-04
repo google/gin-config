@@ -47,7 +47,7 @@ class ParserDelegate(object):
   __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
-  def configurable_reference(self, scoped_configurable_name, evaluate):
+  def configurable_reference(self, scoped_configurable_name, evaluate, kwargs):
     """Called to construct an object representing a configurable reference.
 
     Args:
@@ -437,18 +437,31 @@ class ConfigParser(object):
     location = self._current_location()
     self._advance_one_token()
     scoped_name = self._parse_selector(allow_periods_in_scope=True)
-
     evaluate = False
+    kwargs = dict()
     if self._current_token.value == '(':
-      evaluate = True
       self._advance()
-      if self._current_token.value != ')':
-        self._raise_syntax_error("Expected ')'.")
+      evaluate = True
+      while self._current_token.value != ')':
+        if self._current_token.kind != tokenize.NAME:
+          raise self._raise_syntax_error('Unexpected token.')
+        arg_name = self._current_token.value
+        self._advance_one_token()
+        if self._current_token.value != '=':
+          raise self._raise_syntax_error("Expected '='.")
+        self._advance()
+        arg_value = self.parse_value()
+        kwargs[arg_name] = arg_value
+        if self._current_token.value == ',':
+          self._advance()
+          continue
+        if self._current_token.value != ')':
+          self._raise_syntax_error("Expected ')'.")
       self._advance_one_token()
     self._skip_whitespace_and_comments()
 
     with utils.try_with_location(location):
-      reference = self._delegate.configurable_reference(scoped_name, evaluate)
+      reference = self._delegate.configurable_reference(scoped_name, evaluate, kwargs)
 
     return True, reference
 
