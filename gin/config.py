@@ -287,25 +287,46 @@ def _raise_unknown_reference_error(ref, additional_msg=''):
 class IdentifierReference(object):
   """Represents reference to a function or class or variable"""
 
-  def __init__(self, identifier):
+  def __init__(self, identifier, evaluate, args=None, kwargs=None):
     self._identifier = identifier
-
+    self._evaluate = evaluate
+    self._args = args or []
+    self._kwargs = kwargs or {}
 
   def __repr__(self):
-    return self._identifier
+    maybe_parens = ''
+    if self._evaluate:
+      parens = []
+      if self._args:
+        parens.append(', '.join([repr(arg_value) for arg_value in self._args]))
+      if self._kwargs:
+        parens.append(', '.join(['{}={}'.format(arg_name, repr(arg_value))
+                                 for arg_name, arg_value in self._kwargs.items()]))
+      maybe_parens = '(%s)' % ', '.join(parens)
+    return '{}{}'.format(self._identifier, maybe_parens)
 
   def __deepcopy__(self, memo):
     frame = memo['_frame']
-    return eval(self._identifier, frame.f_locals, frame.f_globals)
+    identifier =  eval(self._identifier, frame.f_locals, frame.f_globals)
+    if self._evaluate:
+      args = []
+      if self._args:
+        args=  copy.deepcopy(self._args, memo)
+      kwargs = {}
+      if self._kwargs:
+        kwargs = copy.deepcopy(self._kwargs, memo)
+      return identifier(*args, **kwargs)
+    return identifier
 
 
 
 class ConfigurableReference(object):
   """Represents a reference to a configurable function or class."""
 
-  def __init__(self, scoped_selector, evaluate, kwargs=None):
+  def __init__(self, scoped_selector, evaluate, args=None, kwargs=None):
     self._scoped_selector = scoped_selector
     self._evaluate = evaluate
+    self._args = None
     self._kwargs = kwargs or {}
 
     scoped_selector_parts = self._scoped_selector.split('/')
@@ -377,9 +398,16 @@ class ConfigurableReference(object):
       return '%' + '/'.join(self._scopes)
     maybe_parens = ''
     if self._evaluate:
-      kwargs = ', '.join(['{}={}'.format(arg_name, repr(arg_value))
-                          for arg_name, arg_value in self._kwargs.items()])
-      maybe_parens = '(' + kwargs + ')'
+      parens = []
+      if self._args:
+        args = ', '.join([repr(arg) for arg in self._args])
+        parens.append(args)
+      if self._kwargs:
+        kwargs = ', '.join(['{}={}'.format(arg_name, repr(arg_value))
+                            for arg_name, arg_value in self._kwargs.items()])
+        parens.append(kwargs)
+      maybe_parens = '(%s)' % ', '.join(parens)
+
     return '@{}{}'.format(self._scoped_selector, maybe_parens)
 
   def __deepcopy__(self, memo):
@@ -402,10 +430,13 @@ class ConfigurableReference(object):
       `True`, returns the output of calling the underlying configurable.
     """
     if self._evaluate:
+      args = []
       kwargs = {}
+      if self._args:
+        args = copy.deepcopy(self._args, memo=memo)
       if self._kwargs:
-        kwargs = copy.deepcopy(self._kwargs)
-      return self._scoped_configurable_fn(**kwargs)
+        kwargs = copy.deepcopy(self._kwargs, memo=memo)
+      return self._scoped_configurable_fn(*args, **kwargs)
     return self._scoped_configurable_fn
 
 
@@ -468,14 +499,14 @@ class ParserDelegate(config_parser.ParserDelegate):
   def __init__(self, skip_unknown=False):
     self._skip_unknown = skip_unknown
 
-  def configurable_reference(self, scoped_selector, evaluate, kwargs=None):
+  def configurable_reference(self, scoped_selector, evaluate, args=None, kwargs=None):
     unscoped_selector = scoped_selector.rsplit('/', 1)[-1]
     if _should_skip(unscoped_selector, self._skip_unknown):
       return _UnknownConfigurableReference(scoped_selector, evaluate)
-    return ConfigurableReference(scoped_selector, evaluate, kwargs)
+    return ConfigurableReference(scoped_selector, evaluate, args, kwargs)
 
-  def identifier_reference(self, identifier):
-    return IdentifierReference(identifier)
+  def identifier_reference(self, identifier, evaluate, args=None, kwargs=None):
+    return IdentifierReference(identifier, evaluate, args, kwargs)
 
   def macro(self, name):
     matching_selectors = _CONSTANTS.matching_selectors(name)

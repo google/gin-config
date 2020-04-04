@@ -47,13 +47,15 @@ class ParserDelegate(object):
   __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
-  def configurable_reference(self, scoped_configurable_name, evaluate, kwargs):
+  def configurable_reference(self, scoped_configurable_name, evaluate, args, kwargs):
     """Called to construct an object representing a configurable reference.
 
     Args:
       scoped_configurable_name: The name of the configurable reference,
         including all scopes.
       evaluate: Whether the configurable reference should be evaluated.
+      args: position arguments for configurable reference when evaluated
+      kwargs: keyword arguments for configurable reference when evaluated
 
     Returns:
       Should return an object representing the configurable reference.
@@ -61,11 +63,14 @@ class ParserDelegate(object):
     pass
 
   @abc.abstractmethod
-  def identifier_reference(self, identifier):
+  def identifier_reference(self, identifier, evaluate, args, kwargs):
     """Called to construct an object representing a identifier reference
 
     Args:
       identifier: The name of the reference
+      evaluate: Whether the reference should be evaluated.
+      args: position arguments for reference when evaluated
+      kwargs: keyword arguments for reference when evaluated
 
     Returns:
       Should return an object representing the reference.
@@ -438,30 +443,16 @@ class ConfigParser(object):
     self._advance_one_token()
     scoped_name = self._parse_selector(allow_periods_in_scope=True)
     evaluate = False
+    args = []
     kwargs = dict()
     if self._current_token.value == '(':
-      self._advance()
       evaluate = True
-      while self._current_token.value != ')':
-        if self._current_token.kind != tokenize.NAME:
-          raise self._raise_syntax_error('Unexpected token.')
-        arg_name = self._current_token.value
-        self._advance_one_token()
-        if self._current_token.value != '=':
-          raise self._raise_syntax_error("Expected '='.")
-        self._advance()
-        arg_value = self.parse_value()
-        kwargs[arg_name] = arg_value
-        if self._current_token.value == ',':
-          self._advance()
-          continue
-        if self._current_token.value != ')':
-          self._raise_syntax_error("Expected ')'.")
-      self._advance_one_token()
+      args, kwargs = self._parse_args_kwargs()
+
     self._skip_whitespace_and_comments()
 
     with utils.try_with_location(location):
-      reference = self._delegate.configurable_reference(scoped_name, evaluate, kwargs)
+      reference = self._delegate.configurable_reference(scoped_name, evaluate, args, kwargs)
 
     return True, reference
 
@@ -494,12 +485,40 @@ class ConfigParser(object):
       location = (self._filename, begin_line_num, begin_char_num + 1, line)
       self._raise_syntax_error('Malformatted identifier.', location)
 
+    evaluate = False
+    args = []
+    kwargs = dict()
+    if self._current_token.value == '(':
+      evaluate = True
+      args, kwargs = self._parse_args_kwargs()
     self._skip_whitespace_and_comments()
 
     with utils.try_with_location(location):
-      reference = self._delegate.identifier_reference(identifier)
+      reference = self._delegate.identifier_reference(identifier, evaluate, args, kwargs)
     return True, reference
 
+  def _parse_args_kwargs(self):
+    location = self._current_location()
+    args = []
+    kwargs = {}
+    self._advance()
+    while self._current_token.value != ')':
+      arg = self.parse_value()
+      if self._current_token.value == '=':
+        self._advance()
+        arg_name = repr(arg)
+        if not IDENTIFIER_RE.match(arg_name):
+          self._raise_syntax_error('Unexpected token .', location)
+        kwargs[arg_name] = self.parse_value()
+      else:
+        args.append(arg)
+      if self._current_token.value == ',':
+        self._advance()
+        continue
+      if self._current_token.value != ')':
+        self._raise_syntax_error("Expected ')'.")
+    self._advance_one_token()
+    return args, kwargs
 
   def _maybe_parse_macro(self):
     """Try to parse an macro (%scope/name)."""

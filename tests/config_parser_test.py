@@ -88,7 +88,7 @@ class _TestParserDelegate(config_parser.ParserDelegate):
   def __init__(self, raise_error=False):
     self._raise_error = raise_error
 
-  def configurable_reference(self, scoped_name, evaluate, kwargs):
+  def configurable_reference(self, scoped_name, evaluate, args, kwargs):
     if self._raise_error:
       raise ValueError('Unknown configurable.')
     return _TestConfigurableReference(scoped_name, evaluate)
