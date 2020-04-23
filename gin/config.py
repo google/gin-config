@@ -195,6 +195,74 @@ _LOCATION_PREFIXES = ['']
 REQUIRED = object()
 
 
+class GinContext(object):
+  """
+  Class for encapsulating changes to the current configuration state.
+
+  For use as a context manager.
+  ```python
+  with GinContext() as ctx:
+    parse_config(bindings)
+    bound_fn_call()
+    config_str = operative_config_str()
+
+  assert config_str != operative_config_str()
+  with ctx:
+    assert config_str == operative_config_str()
+  ```
+
+  By default, opening a context will not clear the existing state - i.e.
+  any bound parameters will still be bound. This can be changed by setting
+  `inherit=False` in the constructor.
+
+  `GinContext`s encapsulate the following changes:
+    * config (from `parse_config` etc.)
+    * operative config
+    * singletons
+  The following are NOT encapsulate:
+    * constants
+    * imported files
+    * registered functions
+    * active scopes
+    * finalize hooks
+    * readers
+
+  so e.g. after opening a new context, you will not need to re-import files with
+  with `@configurable` or `@registered` annotations or repeat
+  `external_configurable` calls.
+  """
+  _global_elems = (_CONFIG, _OPERATIVE_CONFIG, _SINGLETONS)
+
+  def __init__(self, inherit=True):
+    self._open = False
+    self._backup = None
+    self._inherit = inherit
+    self._elems = tuple({} for _ in GinContext._global_elems)
+
+  def __enter__(self):
+    if self._open:
+      raise RuntimeError("Cannot open a context which is already open.")
+    self._open = True
+    self._backup = tuple(copy.deepcopy(g) for g in GinContext._global_elems)
+    for global_elem, own_elem in zip(GinContext._global_elems, self._elems):
+      if not self._inherit:
+        global_elem.clear()
+      global_elem.update(own_elem)
+    return self
+
+  def __exit__(self, *args, **kwargs):
+    assert self._open
+    for global_elem, own_elem, backup in zip(
+        GinContext._global_elems, self._elems, self._backup):
+      # save changes to this context
+      own_elem.update(global_elem)
+      # restore backup
+      global_elem.clear()
+      global_elem.update(backup)
+    self._backup = True
+    self._open = False
+
+
 def _find_class_construction_fn(cls):
   """Find the first __init__ or __new__ method in the given class's MRO."""
   for base in type.mro(cls):
