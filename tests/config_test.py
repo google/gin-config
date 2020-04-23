@@ -1635,6 +1635,87 @@ class ConfigTest(absltest.TestCase):
     config.add_config_file_search_path(absolute_testdata_path)
     config.parse_config_files_and_bindings([gin_file], None)
 
+  def testContextBinding(self):
+    config.bind_parameter("configurable1.non_kwarg", "global")
+    self.assertEqual(
+      config.query_parameter("configurable1.non_kwarg"), "global")
+    with config.GinContext() as ctx:
+      self.assertEqual(fn1()[0], "global")
+      config.bind_parameter("configurable1.non_kwarg", "temp")
+      self.assertEqual(
+        config.query_parameter("configurable1.non_kwarg"), "temp")
+    self.assertEqual(
+      config.query_parameter("configurable1.non_kwarg"), "global")
+    with ctx:
+      self.assertEqual(
+        config.query_parameter("configurable1.non_kwarg"), "temp")
+    with config.GinContext(inherit=False):
+      with self.assertRaises(TypeError) as err_ctx:
+        fn1()
+    self.assertTrue(
+      "missing 1 required positional argument" in str(err_ctx.exception))
+
+  def testContextSingletons(self):
+
+    @config.configurable
+    class Champ(object):
+      count = 0
+
+      def __init__(self):
+        Champ.count += 1
+
+    config_str = '''
+    chuck_norris/singleton.constructor = @Champ
+    configurable1.non_kwarg = @chuck_norris/singleton()
+    configurable2.non_kwarg = @chuck_norris/singleton()
+    '''
+    config.parse_config(config_str)
+    self.assertEqual(Champ.count, 0)
+    fn1()
+    self.assertEqual(Champ.count, 1)
+    configurable2()
+    self.assertEqual(Champ.count, 1)
+    with config.GinContext():
+      fn1()
+      self.assertEqual(Champ.count, 1)
+    with config.GinContext(inherit=False):
+      config.parse_config(config_str)
+      fn1()
+      self.assertEqual(Champ.count, 2)
+
+  def testCannotOpenOpenContext(self):
+    ctx = config.GinContext()
+    with ctx:
+      with self.assertRaises(RuntimeError) as err_ctx:
+        with ctx:
+          pass
+      self.assertTrue(
+        "Cannot open a context which is already open." in str(
+          err_ctx.exception))
+
+  def testNestedContexts(self):
+    a = config.GinContext()
+    b = config.GinContext()
+
+    def setx(x):
+      config.bind_parameter("configurable1.non_kwarg", x)
+
+    def check_is(expected):
+      return self.assertEqual(config.query_parameter(
+        "configurable1.non_kwarg"), expected)
+
+    setx("global")
+    check_is("global")
+    with a:
+      setx("a0")
+      check_is("a0")
+      with b:
+        setx("b0")
+        check_is("b0")
+      check_is("a0")
+    check_is("global")
+
+
 
 if __name__ == '__main__':
   absltest.main()
