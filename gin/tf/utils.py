@@ -85,32 +85,6 @@ class GinConfigSaverHook(tf.estimator.SessionRunHook):
     self._summary_writer = summary_writer
     self._include_step_in_filename = include_step_in_filename
 
-  def _markdownify_operative_config_str(self, string):
-    """Convert an operative config string to markdown format."""
-
-    # TODO: Total hack below. Implement more principled formatting.
-    def process(line):
-      """Convert a single line to markdown format."""
-      if not line.startswith('#'):
-        return '    ' + line
-
-      line = line[2:]
-      if line.startswith('===='):
-        return ''
-      if line.startswith('None'):
-        return '    # None.'
-      if line.endswith(':'):
-        return '#### ' + line
-      return line
-
-    output_lines = []
-    for line in string.splitlines():
-      procd_line = process(line)
-      if procd_line is not None:
-        output_lines.append(procd_line)
-
-    return '\n'.join(output_lines)
-
   def after_create_session(self, session=None, coord=None):
     """Writes out Gin's operative config, and maybe adds a summary of it."""
     config_str = config.operative_config_str()
@@ -130,7 +104,7 @@ class GinConfigSaverHook(tf.estimator.SessionRunHook):
       f.write(config_str)
 
     if self._summarize_config:
-      md_config_str = self._markdownify_operative_config_str(config_str)
+      md_config_str = config.markdownify_operative_config_str(config_str)
       summary_metadata = summary_pb2.SummaryMetadata()
       summary_metadata.plugin_data.plugin_name = 'text'
       summary_metadata.plugin_data.content = b'{}'
