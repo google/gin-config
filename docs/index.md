@@ -1,5 +1,27 @@
 # Gin Config
 
+<!--* freshness: {
+  owner: 'sguada'
+  owner: 'dhr'
+  reviewed: '2020-05-27'
+  review_interval: '12 months'
+} *-->
+
+go/gin-config
+
+```live-build-status
+project_id: "gin_config.opt"
+project_type: "TAP"
+badge_label: "Gin Config."
+```
+
+```live-build-status
+project_id: "gin_config.tf2.opt"
+project_type: "TAP"
+badge_label: "Gin Config TF2."
+```
+
+
 Gin provides a lightweight, dependency injection driven approach to specifying
 and configuring hyperparameters.
 
