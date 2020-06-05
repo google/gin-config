@@ -1782,6 +1782,7 @@ def parse_config_files_and_bindings(config_files: Sequence[str],
   if bindings is None:
     bindings = ''
   nested_includes_and_imports = []
+  includes_and_imports = []
   for config_file in config_files:
     includes_and_imports = parse_config_file(config_file, skip_unknown)
     nested_includes_and_imports.append(includes_and_imports)
