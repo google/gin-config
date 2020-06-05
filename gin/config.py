@@ -1792,7 +1792,7 @@ def parse_config_files_and_bindings(config_files: Sequence[str],
   if print_includes_and_imports:
     for includes_and_imports in nested_includes_and_imports:
       log_includes_and_imports(includes_and_imports)
-  return includes_and_imports
+  return nested_includes_and_imports
 
 
 def log_includes_and_imports(

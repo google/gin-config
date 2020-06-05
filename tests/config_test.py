@@ -1642,7 +1642,7 @@ class ConfigTest(absltest.TestCase):
     absolute_testdata_path = os.path.join(test_srcdir, relative_testdata_path)
     config.add_config_file_search_path(absolute_testdata_path)
     result = config.parse_config_files_and_bindings(
-        [gin_file], None, print_includes_and_imports=True)
+        [gin_file], None, print_includes_and_imports=True)[0]
     self.assertEqual(result.filename, gin_file)
     self.assertListEqual(result.imports,
                          ['gin.testdata.import_test_configurables'])
@@ -1652,6 +1652,15 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(result.includes[1].filename, 'nested.gin')
     self.assertListEqual(result.includes[1].imports, ['io', 'time'])
     self.assertListEqual(result.includes[1].includes, [])
+
+  def testEmptyNestedIncludesAndImports(self):
+    test_srcdir = absltest.get_default_test_srcdir()
+    relative_testdata_path = 'gin/testdata'
+    absolute_testdata_path = os.path.join(test_srcdir, relative_testdata_path)
+    config.add_config_file_search_path(absolute_testdata_path)
+    result = config.parse_config_files_and_bindings(
+        [], ['TEST=1'], print_includes_and_imports=True)
+    self.assertListEqual(result, [])
 
 
 if __name__ == '__main__':
