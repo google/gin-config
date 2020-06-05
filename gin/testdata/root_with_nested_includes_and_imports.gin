@@ -1,0 +1,6 @@
+include 'valid.gin'
+include 'nested.gin'
+
+import gin.testdata.import_test_configurables
+
+configurable2.kwarg1 = 0

@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# -*- coding: UTF-8 -*-
 """Defines the Gin configuration framework.
 
 Programs frequently have a number of "hyperparameters" that require variation
@@ -83,11 +84,13 @@ parameter, due to the trailing `()` in `@serve_random_cocktail()`.
 
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import google_type_annotations
 from __future__ import print_function
 
 import collections
 import contextlib
 import copy
+import enum
 import functools
 import inspect
 import logging
@@ -96,8 +99,7 @@ import pprint
 import sys
 import threading
 import traceback
-
-import enum
+from typing import Sequence
 
 from gin import config_parser
 from gin import selector_map
@@ -254,9 +256,11 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, subclass=False):
   construction_fn = _find_class_construction_fn(fn_or_cls)
 
   if subclass:
+
     class DecoratedClass(fn_or_cls):
       __doc__ = fn_or_cls.__doc__
       __module__ = fn_or_cls.__module__
+
     DecoratedClass.__name__ = fn_or_cls.__name__
     if six.PY3:
       DecoratedClass.__qualname__ = fn_or_cls.__qualname__
@@ -272,9 +276,9 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, subclass=False):
 
 
 class Configurable(
-    collections.namedtuple('Configurable', [
-        'fn_or_cls', 'name', 'module', 'whitelist', 'blacklist', 'selector'
-    ])):
+    collections.namedtuple(
+        'Configurable',
+        ['fn_or_cls', 'name', 'module', 'whitelist', 'blacklist', 'selector'])):
   pass
 
 
@@ -300,12 +304,15 @@ class ConfigurableReference(object):
 
     def reference_decorator(fn):
       if self._scopes:
+
         @six.wraps(fn)
         def scoping_wrapper(*args, **kwargs):
           with config_scope(self._scopes):
             return fn(*args, **kwargs)
+
         return scoping_wrapper
       return fn
+
     self._scoped_configurable_fn = _decorate_fn_or_cls(
         reference_decorator, self.configurable.fn_or_cls, True)
 
@@ -340,9 +347,8 @@ class ConfigurableReference(object):
   def __eq__(self, other):
     if isinstance(other, self.__class__):
       # pylint: disable=protected-access
-      return (
-          self._configurable == other._configurable and
-          self._evaluate == other._evaluate)
+      return (self._configurable == other._configurable and
+              self._evaluate == other._evaluate)
       # pylint: enable=protected-access
     return False
 
@@ -461,9 +467,9 @@ class ParserDelegate(config_parser.ParserDelegate):
 
 
 class ParsedBindingKey(
-    collections.namedtuple('ParsedBindingKey', [
-        'scope', 'given_selector', 'complete_selector', 'arg_name'
-    ])):
+    collections.namedtuple(
+        'ParsedBindingKey',
+        ['scope', 'given_selector', 'complete_selector', 'arg_name'])):
   """Represents a parsed and validated binding key.
 
   A "binding key" identifies a specific parameter (`arg_name`), of a specific
@@ -1276,8 +1282,8 @@ def external_configurable(fn_or_cls,
       also include module components to be used for disambiguation (these will
       be appended to any components explicitly specified by `module`).
     module: The module to associate with the configurable, to help handle naming
-      collisions. By default, `fn_or_cls.__module__` will be used (if no
-      module is specified as part of the name).
+      collisions. By default, `fn_or_cls.__module__` will be used (if no module
+      is specified as part of the name).
     whitelist: A whitelist of parameter names to allow configuration for.
     blacklist: A blacklist of parameter names not to allow configuration for.
 
@@ -1373,12 +1379,13 @@ def register(name_or_fn=None, module=None, whitelist=None, blacklist=None):
 
   def perform_decoration(fn_or_cls):
     # Register it as configurable but return the orinal fn_or_cls.
-    _make_configurable(fn_or_cls,
-                       name=name,
-                       module=module,
-                       whitelist=whitelist,
-                       blacklist=blacklist,
-                       subclass=True)
+    _make_configurable(
+        fn_or_cls,
+        name=name,
+        module=module,
+        whitelist=whitelist,
+        blacklist=blacklist,
+        subclass=True)
     return fn_or_cls
 
   if decoration_target:
@@ -1402,6 +1409,7 @@ def _config_str(configuration_object,
   Returns:
     A config string capturing all parameter values set by the object.
   """
+
   def format_binding(key, value):
     """Pretty print the given key/value pair."""
     formatted_val = pprint.pformat(
@@ -1454,7 +1462,8 @@ def _config_str(configuration_object,
 
     minimal_selector = _REGISTRY.minimal_selector(configurable_.selector)
     scoped_selector = (scope + '/' if scope else '') + minimal_selector
-    parameters = [(k, v) for k, v in six.iteritems(config)
+    parameters = [(k, v)
+                  for k, v in six.iteritems(config)
                   if _is_literally_representable(v)]
     formatted_statements.append('# Parameters for {}:'.format(scoped_selector))
     formatted_statements.append('# ' + '=' * (max_line_length - 2))
@@ -1515,6 +1524,12 @@ def config_str(max_line_length=80, continuation_indent=4):
     A config string capturing all parameter values used by the current program.
   """
   return _config_str(_CONFIG, max_line_length, continuation_indent)
+
+
+class ParsedConfigFileIncludesAndImports(
+    collections.namedtuple('ParsedConfigFileIncludesAndImports',
+                           ['filename', 'imports', 'includes'])):
+  pass
 
 
 def parse_config(bindings, skip_unknown=False):
@@ -1587,8 +1602,13 @@ def parse_config(bindings, skip_unknown=False):
       to unknown configurables will cause errors if they are present in a
       binding that is not itself skipped due to an unknown configurable. This
       can also be a list of configurable names: any unknown configurables that
-      do not match an item in the list will still cause errors. Note that
-      bindings for known configurables will always be parsed.
+        do not match an item in the list will still cause errors. Note that
+        bindings for known configurables will always be parsed.
+
+  Returns:
+    includes: List of ParsedConfigFileIncludesAndImports describing the result
+      of loading nested include statements.
+    imports: List of names of imported modules.
   """
   if isinstance(bindings, (list, tuple)):
     bindings = '\n'.join(bindings)
@@ -1598,6 +1618,8 @@ def parse_config(bindings, skip_unknown=False):
     skip_unknown = set(skip_unknown)
 
   parser = config_parser.ConfigParser(bindings, ParserDelegate(skip_unknown))
+  includes = []
+  imports = []
   for statement in parser:
     if isinstance(statement, config_parser.BindingStatement):
       scope, selector, arg_name, value, location = statement
@@ -1610,6 +1632,7 @@ def parse_config(bindings, skip_unknown=False):
         with utils.try_with_location(location):
           bind_parameter((scope, selector, arg_name), value)
     elif isinstance(statement, config_parser.ImportStatement):
+      imports.append(statement.module)
       if skip_unknown:
         try:
           __import__(statement.module)
@@ -1632,9 +1655,11 @@ def parse_config(bindings, skip_unknown=False):
         _IMPORTED_MODULES.add(statement.module)
     elif isinstance(statement, config_parser.IncludeStatement):
       with utils.try_with_location(statement.location):
-        parse_config_file(statement.filename, skip_unknown)
+        nested_includes = parse_config_file(statement.filename, skip_unknown)
+        includes.append(nested_includes)
     else:
       raise AssertionError('Unrecognized statement type {}.'.format(statement))
+  return includes, imports
 
 
 def register_file_reader(*args):
@@ -1662,6 +1687,7 @@ def register_file_reader(*args):
     `None`, or when used as a decorator, a function that will perform the
     registration using the supplied readability predicate.
   """
+
   def do_registration(file_reader_fn, is_readable_fn):
     if file_reader_fn not in list(zip(*_FILE_READERS))[0]:
       _FILE_READERS.append((file_reader_fn, is_readable_fn))
@@ -1680,7 +1706,11 @@ def add_config_file_search_path(location_prefix):
   _LOCATION_PREFIXES.append(location_prefix)
 
 
-def parse_config_file(config_file, skip_unknown=False):
+def parse_config_file(
+    config_file: str,
+    skip_unknown: bool = False,
+    print_includes_and_imports: bool = False
+) -> ParsedConfigFileIncludesAndImports:
   """Parse a Gin config file.
 
   Args:
@@ -1689,6 +1719,14 @@ def parse_config_file(config_file, skip_unknown=False):
       should be skipped instead of causing errors (alternatively a list of
       configurable names to skip if unknown). See `parse_config` for additional
       details.
+    print_includes_and_imports: Whether to print the resulting nested includes
+      and imports.
+
+  Returns:
+    results: An instance of ParsedConfigFileIncludesAndImports containing the
+      filename of the parse files, a list of names of imported modules and a
+      list of ParsedConfigFileIncludesAndImports created from including nested
+      gin files.
 
   Raises:
     IOError: If `config_file` cannot be read using any register file reader.
@@ -1699,16 +1737,21 @@ def parse_config_file(config_file, skip_unknown=False):
     for reader, existence_check in _FILE_READERS:
       if existence_check(config_file_with_prefix):
         with reader(config_file_with_prefix) as f:
-          parse_config(f, skip_unknown=skip_unknown)
-          return
+          includes, imports = parse_config(f, skip_unknown=skip_unknown)
+          results = ParsedConfigFileIncludesAndImports(
+              filename=config_file, imports=imports, includes=includes)
+          if print_includes_and_imports:
+            log_includes_and_imports(results)
+          return results
   err_str = 'Unable to open file: {}. Searched config paths: {}.'
   raise IOError(err_str.format(config_file, prefixes))
 
 
-def parse_config_files_and_bindings(config_files,
-                                    bindings,
-                                    finalize_config=True,
-                                    skip_unknown=False):
+def parse_config_files_and_bindings(config_files: Sequence[str],
+                                    bindings: Sequence[str],
+                                    finalize_config: bool = True,
+                                    skip_unknown: bool = False,
+                                    print_includes_and_imports: bool = False):
   """Parse a list of config files followed by extra Gin bindings.
 
   This function is equivalent to:
@@ -1728,16 +1771,52 @@ def parse_config_files_and_bindings(config_files,
       should be skipped instead of causing errors (alternatively a list of
       configurable names to skip if unknown). See `parse_config` for additional
       details.
+    print_includes_and_imports: If true, print a summary of the hierarchy of
+      included gin config files and imported modules.
+
+  Returns:
+    includes_and_imports: List of ParsedConfigFileIncludesAndImports.
   """
   if config_files is None:
     config_files = []
   if bindings is None:
     bindings = ''
+  nested_includes_and_imports = []
   for config_file in config_files:
-    parse_config_file(config_file, skip_unknown)
+    includes_and_imports = parse_config_file(config_file, skip_unknown)
+    nested_includes_and_imports.append(includes_and_imports)
   parse_config(bindings, skip_unknown)
   if finalize_config:
     finalize()
+
+  if print_includes_and_imports:
+    for includes_and_imports in nested_includes_and_imports:
+      log_includes_and_imports(includes_and_imports)
+  return includes_and_imports
+
+
+def log_includes_and_imports(
+    file_includes_and_imports: ParsedConfigFileIncludesAndImports,
+    first_line_prefix: str = '',
+    prefix: str = ''):
+  """Logs a ParsedConfigFileIncludesAndImports and its includes and imports."""
+  logging.info('%s%s', first_line_prefix, file_includes_and_imports.filename)
+  infix = ' │' if file_includes_and_imports.includes else '  '
+  if file_includes_and_imports.imports:
+    for imported_module in file_includes_and_imports.imports:
+      logging.info('%s%s import %s', prefix, infix, imported_module)
+  if file_includes_and_imports.includes:
+    for i, nested_result in enumerate(file_includes_and_imports.includes):
+      if i < len(file_includes_and_imports.includes) - 1:
+        nested_first_line_prefix = prefix + ' ├─ '
+        nested_prefix = prefix + ' │ '
+      else:
+        nested_first_line_prefix = prefix + ' └─ '
+        nested_prefix = prefix + '   '
+      log_includes_and_imports(
+          nested_result,
+          first_line_prefix=nested_first_line_prefix,
+          prefix=nested_prefix)
 
 
 def parse_value(value):
@@ -1985,10 +2064,11 @@ def constants_from_enum(cls=None, module=None):
   Raises:
     TypeError: When applied to a non-enum class.
   """
+
   def decorator(cls, module=module):
     if not issubclass(cls, enum.Enum):
-      raise TypeError(
-          "Class '{}' is not subclass of enum.".format(cls.__name__))
+      raise TypeError("Class '{}' is not subclass of enum.".format(
+          cls.__name__))
 
     if module is None:
       module = cls.__module__
