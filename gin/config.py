@@ -99,7 +99,7 @@ import pprint
 import sys
 import threading
 import traceback
-from typing import Sequence
+from typing import Optional, Sequence
 
 from gin import config_parser
 from gin import selector_map
@@ -1747,8 +1747,8 @@ def parse_config_file(
   raise IOError(err_str.format(config_file, prefixes))
 
 
-def parse_config_files_and_bindings(config_files: Sequence[str],
-                                    bindings: Sequence[str],
+def parse_config_files_and_bindings(config_files: Optional[Sequence[str]],
+                                    bindings: Optional[Sequence[str]],
                                     finalize_config: bool = True,
                                     skip_unknown: bool = False,
                                     print_includes_and_imports: bool = False):
