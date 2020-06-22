@@ -1,4 +1,10 @@
-# Gin
+# Gin Config
+
+
+**Authors**: Dan Holtmann-Rice, Sergio Guadarrama, Nathan Silberman
+**Contributors**: Oscar Ramirez, Marek Fiser
+
+<!---->
 
 Gin provides a lightweight configuration framework for Python, based on
 dependency injection. Functions or classes can be decorated with
@@ -10,12 +16,6 @@ dramatically expanding a project's flexibility and configurability.
 
 Gin is particularly well suited for machine learning experiments (e.g. using
 TensorFlow), which tend to have many parameters, often nested in complex ways.
-
-
-**Authors**: Dan Holtmann-Rice, Sergio Guadarrama, Nathan Silberman
-**Contributors**: Oscar Ramirez, Marek Fiser
-
-<!---->
 
 This is not an official Google product.
 
