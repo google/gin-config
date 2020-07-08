@@ -126,6 +126,7 @@ config.external_configurable(tf.nn.softmax, 'tf.nn.softmax')
 config.external_configurable(tf.nn.softplus, 'tf.nn.softplus')
 config.external_configurable(tf.nn.softsign, 'tf.nn.softsign')
 config.external_configurable(tf.nn.tanh, 'tf.nn.tanh')
+config.external_configurable(tf.identity, 'tf.identity')
 
 # Random distributions.
 
