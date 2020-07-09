@@ -84,7 +84,7 @@ parameter, due to the trailing `()` in `@serve_random_cocktail()`.
 
 from __future__ import absolute_import
 from __future__ import division
-from __future__ import google_type_annotations
+# Using Type Annotations.
 from __future__ import print_function
 
 import collections
