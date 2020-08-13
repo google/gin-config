@@ -15,17 +15,12 @@
 
 """Tests for gin.tf.utils."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import tempfile
 
 from gin import config
 from gin.tf import utils
 
-from six.moves import zip
 import tensorflow as tf
 
 # pylint: disable=g-direct-tensorflow-import
@@ -39,7 +34,7 @@ def configurable_fn(kwarg1=0, kwarg2=1):  # pylint: disable=unused-argument
 
 
 @config.configurable
-class ConfigurableClass(object):
+class ConfigurableClass:
 
   def __init__(self, kwarg1=None, kwarg2=None):
     self.kwarg1 = kwarg1
@@ -63,7 +58,7 @@ def new_object():
   return object()
 
 
-class FakeSummaryWriter(object):
+class FakeSummaryWriter:
 
   def __init__(self):
     self._summaries = {}
@@ -115,6 +110,7 @@ class GinConfigSaverHookTest(tf.test.TestCase):
   """
 
   def setUp(self):
+    super().setUp()
     tf.compat.v1.disable_eager_execution()
     tf.compat.v1.reset_default_graph()
     config.clear_config()
@@ -207,6 +203,7 @@ class GinConfigSaverHookTest(tf.test.TestCase):
 class UtilsTest(tf.test.TestCase):
 
   def setUp(self):
+    super().setUp()
     tf.compat.v1.reset_default_graph()
     config.clear_config()
 

@@ -13,10 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 import collections
 import pprint
@@ -25,8 +21,6 @@ import random
 from absl.testing import absltest
 
 from gin import config_parser
-
-import six
 
 
 def _generate_nested_value(max_depth=4, max_container_size=5):
@@ -157,12 +151,13 @@ class ConfigParserTest(absltest.TestCase):
     self.assertEqual(
         assert_raises.exception.text.strip(),
         'scope/some_fn.arg2 = Garbage  # <-- Not a valid Python value.')
-    six.assertRegex(self, str(assert_raises.exception),
-                    r"malformed (string|node or string: <_ast.Name [^\n]+>)\n"
-                    r"    Failed to parse token 'Garbage' \(line 3\)")
+    self.assertRegex(
+        str(assert_raises.exception),
+        r'malformed (string|node or string: <_ast.Name [^\n]+>)\n'
+        r"    Failed to parse token 'Garbage' \(line 3\)")
 
   def testUnknownConfigurableAndMacro(self):
-    with six.assertRaisesRegex(self, ValueError, 'line 2\n.*@raise_an_error'):
+    with self.assertRaisesRegex(ValueError, 'line 2\n.*@raise_an_error'):
       self._parse_config(
           '\n'.join([
               'some_fn.arg1 = None',
@@ -170,7 +165,7 @@ class ConfigParserTest(absltest.TestCase):
           ]),
           generate_unknown_reference_errors=True)
 
-    with six.assertRaisesRegex(self, ValueError, 'line 2\n.*%raise_an_error'):
+    with self.assertRaisesRegex(ValueError, 'line 2\n.*%raise_an_error'):
       self._parse_config(
           '\n'.join([
               'some_fn.arg1 = None',

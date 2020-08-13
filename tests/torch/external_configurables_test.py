@@ -28,10 +28,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import absltest
 
 from gin import config
@@ -42,9 +38,7 @@ import torch
 
 @config.configurable
 def fake_train_model(optimizer, scheduler=None):
-  # pylint: disable=E1101
   opt = optimizer([torch.nn.Parameter(torch.rand(10))])
-  # pylint: enable=E1101
   sch = None
   if scheduler:
     sch = scheduler(opt)
@@ -133,11 +127,9 @@ class PyTorchConfigTest(absltest.TestCase):
     config.parse_config(config_str)
 
     vals = configurable()
-    # pylint: disable=E1101
     self.assertIs(vals['float32'], torch.float32)
     self.assertIs(vals['int8'], torch.int8)
     self.assertIs(vals['float16'], torch.float16)
-    # pylint: disable=E1101
 
 
 if __name__ == '__main__':

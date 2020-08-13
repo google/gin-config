@@ -13,10 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import absltest
 
 from gin import selector_map
@@ -91,11 +87,11 @@ class SelectorMapTest(absltest.TestCase):
     sm['a.a.a.name'] = 'one'
     sm['b.a.a.name'] = 2
 
-    with self.assertRaisesRegexp(KeyError, 'Ambiguous'):
+    with self.assertRaisesRegex(KeyError, 'Ambiguous'):
       sm.get_match('name')
-    with self.assertRaisesRegexp(KeyError, 'Ambiguous'):
+    with self.assertRaisesRegex(KeyError, 'Ambiguous'):
       sm.get_match('a.name')
-    with self.assertRaisesRegexp(KeyError, 'Ambiguous'):
+    with self.assertRaisesRegex(KeyError, 'Ambiguous'):
       sm.get_match('a.a.name')
 
     sm.get_match('a.a.a.name')

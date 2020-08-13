@@ -49,11 +49,7 @@ run_tests() {
   pip install ".[testing,${extras}]"
 
   # Find the tests.
-  if [[ "${python_version}" == "python2.7" ]] ; then
-    local -r test_files=$(find tests -name '*_test.py' ! -name '*_py3_test.py')
-  else
-    local -r test_files=$(find tests -name '*_test.py')
-  fi
+  local -r test_files=$(find tests -name '*_test.py')
 
   # Run the tests.
   for test_file in ${test_files}; do
