@@ -199,7 +199,7 @@ REQUIRED = object()
 
 def _find_class_construction_fn(cls):
   """Find the first __init__ or __new__ method in the given class's MRO."""
-  for base in type.mro(cls):
+  for base in type.mro(cls):  # pytype: disable=wrong-arg-types
     if '__init__' in base.__dict__:
       return base.__init__
     if '__new__' in base.__dict__:
@@ -250,7 +250,7 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, subclass=False):
   Returns:
     The decorated function or class.
   """
-  if not inspect.isclass(fn_or_cls):
+  if not inspect.isclass(fn_or_cls):  # pytype: disable=wrong-arg-types
     return decorator(_ensure_wrappability(fn_or_cls))
 
   construction_fn = _find_class_construction_fn(fn_or_cls)
@@ -504,7 +504,7 @@ class ParsedBindingKey(
         blacklisted or not in the function's whitelist (if present).
     """
     if isinstance(binding_key, ParsedBindingKey):
-      return super(ParsedBindingKey, cls).__new__(cls, *binding_key)
+      return super(ParsedBindingKey, cls).__new__(cls, *binding_key)  # pytype: disable=missing-parameter
 
     if isinstance(binding_key, (list, tuple)):
       scope, selector, arg_name = binding_key
@@ -706,7 +706,7 @@ def _might_have_parameter(fn_or_cls, arg_name):
   Returns:
     Whether `arg_name` might be a valid argument of `fn`.
   """
-  if inspect.isclass(fn_or_cls):
+  if inspect.isclass(fn_or_cls):  # pytype: disable=wrong-arg-types
     fn = _find_class_construction_fn(fn_or_cls)
   else:
     fn = fn_or_cls
@@ -1441,7 +1441,7 @@ def _config_str(configuration_object,
 
   macros = {}
   for (scope, selector), config in six.iteritems(configuration_object):
-    if _REGISTRY[selector].fn_or_cls == macro:
+    if _REGISTRY[selector].fn_or_cls == macro:  # pylint: disable=comparison-with-callable
       macros[scope, selector] = config
   if macros:
     formatted_statements.append('# Macros:')
@@ -1457,7 +1457,7 @@ def _config_str(configuration_object,
     configurable_ = _REGISTRY[selector]
 
     fn = configurable_.fn_or_cls
-    if fn == macro or fn == _retrieve_constant:
+    if fn == macro or fn == _retrieve_constant:  # pylint: disable=comparison-with-callable
       continue
 
     minimal_selector = _REGISTRY.minimal_selector(configurable_.selector)
@@ -1936,7 +1936,7 @@ def _iterate_flattened_values(value):
     return
 
   if isinstance(value, collections.Mapping):
-    value = collections.ValuesView(value)
+    value = collections.ValuesView(value)  # pytype: disable=wrong-arg-count
 
   if isinstance(value, collections.Iterable):
     for nested_value in value:

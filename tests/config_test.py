@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python2
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -435,7 +436,7 @@ class ConfigTest(absltest.TestCase):
     # pylint: enable=no-value-for-parameter
     self.assertEqual(non_kwarg, 'non_kwarg')
     self.assertEqual(kwarg1, 'ahoy')
-    self.assertEqual(kwarg2, None)
+    self.assertIsNone(kwarg2)
     self.assertEqual(kwarg3, 'matey!')
 
   def testUnknownReference(self):
@@ -685,9 +686,9 @@ class ConfigTest(absltest.TestCase):
     self.assertNotIsInstance(sub_instance, type(super_instance))
 
     self.assertEqual(super_instance.kwarg1, 'one')
-    self.assertEqual(super_instance.kwarg2, None)
+    self.assertIsNone(super_instance.kwarg2)
     self.assertEqual(sub_instance.kwarg1, 'some')
-    self.assertEqual(sub_instance.kwarg2, None)
+    self.assertIsNone(sub_instance.kwarg2)
     self.assertEqual(sub_instance.kwarg3, 'thing')
 
   def testConfigurableMethod(self):
@@ -778,9 +779,9 @@ class ConfigTest(absltest.TestCase):
     self.assertIsInstance(sub_instance, ExternalClass)
 
     self.assertEqual(super_instance.kwarg1, 'one')
-    self.assertEqual(super_instance.kwarg2, None)
+    self.assertIsNone(super_instance.kwarg2)
 
-    self.assertEqual(sub_instance.kwarg1, None)
+    self.assertIsNone(sub_instance.kwarg1)
     self.assertEqual(sub_instance.kwarg2, 'two')
     self.assertEqual(sub_instance.kwarg3, 'three')
 

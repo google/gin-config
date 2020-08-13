@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python2
 """Provides a parser for Gin configuration files."""
 
 from __future__ import absolute_import
@@ -41,10 +42,8 @@ MODULE_RE = selector_map.SELECTOR_RE
 IDENTIFIER_RE = re.compile(r'^[a-zA-Z_]\w*$')
 
 
-class ParserDelegate(object):
+class ParserDelegate(six.with_metaclass(abc.ABCMeta, object)):
   """A delegate object used to handle certain operations while parsing."""
-
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
   def configurable_reference(self, scoped_configurable_name, evaluate):

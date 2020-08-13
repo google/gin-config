@@ -110,6 +110,9 @@ class SelectorMap(object):
     """Check if `complete_selector` is present."""
     return complete_selector in self._selector_map
 
+  def __len__(self):
+    return len(self._selector_map)
+
   def get(self, complete_selector, default=None):
     """Look up the value of `complete_selector` if present, or `default`."""
     return self._selector_map.get(complete_selector, default)
