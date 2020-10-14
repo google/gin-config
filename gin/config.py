@@ -92,6 +92,7 @@ import contextlib
 import copy
 import enum
 import functools
+import importlib
 import inspect
 import logging
 import os
@@ -2127,3 +2128,28 @@ def markdownify_operative_config_str(string):
       output_lines.append(procd_line)
 
   return '\n'.join(output_lines)
+
+
+@register_file_reader(IOError)
+def system_path_config_reader(config_path):
+  """Loads a gin config as a resource from within a package.
+
+  importlib.resources was not used because it is new in python 3.7. The
+  approach below addresses the use case of loading a gin config installed as
+  as part of a pip install.
+
+  Args:
+    config_path: path to config file to load from within a package.
+
+  Returns:
+   An open file to the config.
+  """
+  head, filename = os.path.split(config_path)
+  pkg = head.replace('/', '.')
+  # importlib.util.find_spec is valid for python >= 3.4.
+  file_sys_path = importlib.util.find_spec(pkg).origin
+  # file_sys_path often ends with __init__.py.
+  path = os.path.join(os.path.dirname(file_sys_path), filename)
+  f = open(path)
+  logging.info('gin-config opened resource file:%s', path)
+  return f
