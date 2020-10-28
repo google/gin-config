@@ -302,13 +302,13 @@ config.external_configurable(ExternalClass, 'module.ExternalConfigurable2')
 
 
 class ExternalImportableClass(object):
-  """As above, but now importable"""
+  """External Importable Class"""
   def __init__(self, kwarg1=None, kwarg2=None):
     self.kwarg1 = kwarg1
     self.kwarg2 = kwarg2
 
 config.external_configurable(
-  ExternalImportableClass, 'ExternalImportableClass')
+    ExternalImportableClass, 'ExternalImportableClass')
 
 
 @config.configurable
@@ -658,7 +658,7 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(instance.kwarg2, 'waldorf')
     try:
       pickle.dumps(instance)
-    except:
+    except AttributeError:
       self.fail('Configurable class not picklable')
 
   def testConfigurableReferenceClassIdentityIsPreserved(self):
@@ -714,7 +714,7 @@ class ConfigTest(absltest.TestCase):
 
     try:
       pickle.dumps(sub_instance)
-    except:
+    except AttributeError:
       self.fail('Configurable subclass not picklable')
 
   def testConfigurableMethod(self):
@@ -755,7 +755,7 @@ class ConfigTest(absltest.TestCase):
     instance = configurable_class.kwarg1()
     try:
       pickle.dumps(instance)
-    except:
+    except AttributeError:
       self.fail('External configurable class not picklable')
 
   def testAbstractExternalConfigurableClass(self):

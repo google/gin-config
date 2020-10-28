@@ -265,13 +265,13 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, subclass=False):
   elif subclass:
     # this ensures picklability, as we produce the original class instance,
     # the implicit inheritance is skipped
-    def hijacking_new(klass, *args, **kwargs):
+    def _new(klass, *args, **kwargs):
       if klass is DecoratedClass:
         klass = fn_or_cls
       obj = fn_or_cls.__new__(klass, *args, **kwargs)
       decorated_fn(obj, *args, **kwargs)
       return obj
-    setattr(cls, '__new__', hijacking_new)
+    setattr(cls, '__new__', _new)
   setattr(cls, construction_fn.__name__, decorated_fn)
   return cls
 
