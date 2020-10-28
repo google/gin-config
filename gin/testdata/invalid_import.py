@@ -15,9 +15,5 @@
 
 """Provides a simple python file that imports a non-existent module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import nonexistent.module  # pylint: disable=unused-import
 

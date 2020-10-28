@@ -15,14 +15,7 @@
 
 """Some generic utility functions used by Gin."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
-import sys
-
-import six
 
 
 def augment_exception_message_and_reraise(exception, message):
@@ -44,11 +37,8 @@ def augment_exception_message_and_reraise(exception, message):
   ExceptionProxy.__name__ = type(exception).__name__
 
   proxy = ExceptionProxy()
-  if six.PY3:
-    ExceptionProxy.__qualname__ = type(exception).__qualname__
-    six.raise_from(proxy.with_traceback(exception.__traceback__), None)
-  else:
-    six.reraise(proxy, None, sys.exc_info()[2])
+  ExceptionProxy.__qualname__ = type(exception).__qualname__
+  raise proxy.with_traceback(exception.__traceback__) from None
 
 
 def _format_location(location):

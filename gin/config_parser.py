@@ -13,12 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python2
 """Provides a parser for Gin configuration files."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import abc
 import ast
@@ -30,8 +25,6 @@ import tokenize
 from gin import selector_map
 from gin import utils
 
-import six
-
 # A regular expression matching a valid module identifier. A valid module
 # identifier consists of one or more valid identifiers (see below), separated by
 # periods (as in a Python module).
@@ -42,7 +35,7 @@ MODULE_RE = selector_map.SELECTOR_RE
 IDENTIFIER_RE = re.compile(r'^[a-zA-Z_]\w*$')
 
 
-class ParserDelegate(six.with_metaclass(abc.ABCMeta, object)):
+class ParserDelegate(metaclass=abc.ABCMeta):
   """A delegate object used to handle certain operations while parsing."""
 
   @abc.abstractmethod
@@ -156,8 +149,6 @@ class ConfigParser(object):
     if hasattr(string_or_filelike, 'readline'):
       line_reader = string_or_filelike.readline
     else:  # Assume it's string-like.
-      if six.PY2:
-        string_or_filelike = unicode(string_or_filelike)
       string_io = io.StringIO(string_or_filelike)
       line_reader = string_io.readline
 
@@ -177,17 +168,14 @@ class ConfigParser(object):
     return self
 
   def __next__(self):
-    return self.next()
-
-  @property
-  def current_token(self):
-    return self._current_token
-
-  def next(self):
     statement = self.parse_statement()
     if statement:
       return statement
     raise StopIteration
+
+  @property
+  def current_token(self):
+    return self._current_token
 
   def parse_statement(self):
     """Parse a single statement.

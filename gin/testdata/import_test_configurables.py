@@ -15,10 +15,6 @@
 
 """Provides a simple configurable for testing Gin imports."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # Just using the config module, so we don't run Gin's __init__.py (which alters
 # the set of a available file readers and makes the test take ~15x longer due to
 # a dependency on TensorFlow).

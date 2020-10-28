@@ -15,13 +15,7 @@
 
 """Provides a dict-like object that handles Gin "selectors"."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
-
-import six
 
 # Key used to represent terminal nodes (nodes that correspond to a complete
 # selector that was added to the map) in the selector tree.
@@ -31,7 +25,7 @@ _TERMINAL_KEY = '$'
 SELECTOR_RE = re.compile(r'^([a-zA-Z_]\w*\.)*[a-zA-Z_]\w*$')
 
 
-class SelectorMap(object):
+class SelectorMap:
   """A dict-like object that supports partial matches of "selectors".
 
   A "selector" is an identifier consisting of multiple components separated by
@@ -68,13 +62,8 @@ class SelectorMap(object):
   def __copy__(self):
     return self.copy()
 
-  def iteritems(self):
-    return six.iteritems(self._selector_map)
-
   def items(self):
-    if six.PY2:
-      return self._selector_map.items()
-    return self.iteritems()
+    return self._selector_map.items()
 
   def __setitem__(self, complete_selector, value):
     """Associates a value with `complete_selector`.

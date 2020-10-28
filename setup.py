@@ -45,24 +45,20 @@ TensorFlow), which tend to have many parameters, often nested in complex ways.
 **Contributors**: Oscar Ramirez, Marek Fiser
 """
 
-install_requires = ['six >= 1.10.0']
-
 setup(
     name='gin-config',
     version=_VERSION,
     include_package_data=True,
     packages=find_packages(exclude=['docs']),  # Required
     package_data={'testdata': ['testdata/*.gin']},
-    install_requires=install_requires,
+    install_requires=[],
     extras_require={  # Optional
-        ':python_version<"3"': ['enum34'],
         'tensorflow': ['tensorflow >= 1.13.0'],
         'tensorflow-gpu': ['tensorflow-gpu >= 1.13.0'],
         'tf-nightly': ['tf-nightly'],
         'torch': ['torch >= 1.3.0'],
         'pytorch-nightly': ['pytorch-nightly'],
         'testing': [
-            'six >= 1.10.0',
             'absl-py >= 0.1.6',
             'mock >= 3.0.5',
             'nose',

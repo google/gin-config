@@ -13,13 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python2
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import collections
+import enum
 import inspect
 import io
 import logging
@@ -28,9 +24,7 @@ import threading
 
 from absl.testing import absltest
 
-import enum
 from gin import config
-import six
 
 
 _EXPECTED_OPERATIVE_CONFIG_STR = """
@@ -183,6 +177,16 @@ def required_with_vkwargs(arg1,
 
 
 @config.configurable
+def fn_with_kw_only_args(arg1, *, kwarg1=None):
+  return arg1, kwarg1
+
+
+@config.configurable
+def fn_with_kw_only_required_arg(arg1, *, kwarg1=config.REQUIRED):
+  return arg1, kwarg1
+
+
+@config.configurable
 def no_arg_fn():
   pass
 
@@ -229,7 +233,7 @@ def required_as_kwarg_default(positional_arg, required_kwarg=config.REQUIRED):
 
 
 @config.configurable
-class ConfigurableClass(object):
+class ConfigurableClass:
   """A configurable class."""
 
   def __init__(self, kwarg1=None, kwarg2=None):
@@ -270,7 +274,7 @@ configurable_external_named_tuple = config.external_configurable(
 
 
 @config.configurable
-class ObjectSubclassWithoutInit(object):
+class ObjectSubclassWithoutInit:
   """A class that subclasses object but doesn't define its own __init__.
 
   While there's nothing to configure in this class, it may still be desirable to
@@ -282,7 +286,7 @@ class ObjectSubclassWithoutInit(object):
     return arg1
 
 
-class ExternalClass(object):
+class ExternalClass:
   """A class we'll pretend was defined somewhere else."""
 
   __module__ = 'timbuktu'
@@ -310,8 +314,7 @@ class ConfigurableExternalSubclass(configurable_external_class):
     self.kwarg3 = kwarg3
 
 
-class AbstractConfigurable(object):
-  __metaclass__ = abc.ABCMeta
+class AbstractConfigurable(metaclass=abc.ABCMeta):
 
   def __init__(self, kwarg1=None):
     self.kwarg1 = kwarg1
@@ -354,16 +357,16 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(fn1('value0'), ('value0', 'value1', 'value2', None))
 
   def testInvalidNameOrModule(self):
-    with six.assertRaisesRegex(self, ValueError, 'invalid.$'):
+    with self.assertRaisesRegex(ValueError, 'invalid.$'):
       config.configurable('0ops')(lambda _: None)
 
-    with six.assertRaisesRegex(self, ValueError, 'invalid.$'):
+    with self.assertRaisesRegex(ValueError, 'invalid.$'):
       config.configurable('')(lambda _: None)
 
-    with six.assertRaisesRegex(self, ValueError, 'Module .* invalid'):
+    with self.assertRaisesRegex(ValueError, 'Module .* invalid'):
       config.configurable('ok', module='not.0k')(lambda _: None)
 
-    with six.assertRaisesRegex(self, ValueError, 'Module .* invalid'):
+    with self.assertRaisesRegex(ValueError, 'Module .* invalid'):
       config.configurable('fine', module='')(lambda _: None)
 
   def testParseConfigFromFilelike(self):
@@ -409,7 +412,7 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(ConfigurableClass().kwarg1, 'success')
     self.assertEqual(ConfigurableClass().kwarg2, (-2.9, 9.3, 'Oh, Dear.'))
 
-    with six.assertRaisesRegex(self, ImportError, 'No module'):
+    with self.assertRaisesRegex(ImportError, 'No module'):
       config.parse_config('import nonexistent.module')
 
     with self.assertRaises(IOError):
@@ -421,7 +424,7 @@ class ConfigTest(absltest.TestCase):
         'gin/testdata/invalid_include.gin')
     err_msg_regex = ('Unable to open file: not/a/valid/file.gin. '
                      'Searched config paths:')
-    with six.assertRaisesRegex(self, IOError, err_msg_regex):
+    with self.assertRaisesRegex(IOError, err_msg_regex):
       config.parse_config_file(config_file)
 
   def testExplicitParametersOverrideGin(self):
@@ -446,7 +449,7 @@ class ConfigTest(absltest.TestCase):
     """
     expected_err_msg = ("No configurable matching 'unknown'.\n"
                         "  In bindings string line 3")
-    with six.assertRaisesRegex(self, ValueError, expected_err_msg):
+    with self.assertRaisesRegex(ValueError, expected_err_msg):
       config.parse_config(config_str)
 
   def testSkipUnknown(self):
@@ -457,7 +460,7 @@ class ConfigTest(absltest.TestCase):
     with self.assertRaises(ValueError):
       config.parse_config(config_str)
     expected_err_msg = "No configurable matching 'unknown'"
-    with six.assertRaisesRegex(self, ValueError, expected_err_msg):
+    with self.assertRaisesRegex(ValueError, expected_err_msg):
       config.parse_config(config_str, skip_unknown=['moose'])
     config.parse_config(config_str, skip_unknown=['unknown'])
     config.parse_config(config_str, skip_unknown=True)
@@ -509,9 +512,9 @@ class ConfigTest(absltest.TestCase):
     """
     expected_err_msg = (
         r"No configurable matching reference '@UnknownReference\(\)'")
-    with six.assertRaisesRegex(self, ValueError, expected_err_msg):
+    with self.assertRaisesRegex(ValueError, expected_err_msg):
       config.parse_config(config_str)
-    with six.assertRaisesRegex(self, ValueError, expected_err_msg):
+    with self.assertRaisesRegex(ValueError, expected_err_msg):
       config.parse_config(config_str, skip_unknown=['moose'])
 
     config.parse_config(
@@ -523,10 +526,10 @@ class ConfigTest(absltest.TestCase):
     _, kwarg1_val = configurable2(None)
     self.assertEqual(kwarg1_val, 'bog snorkelling')
 
-    with six.assertRaisesRegex(self, ValueError, expected_err_msg):
+    with self.assertRaisesRegex(ValueError, expected_err_msg):
       ConfigurableClass()
     addl_msg = ".* In binding for 'ConfigurableClass.kwarg1'"
-    with six.assertRaisesRegex(self, ValueError, expected_err_msg + addl_msg):
+    with self.assertRaisesRegex(ValueError, expected_err_msg + addl_msg):
       config.finalize()
 
     config.bind_parameter('ConfigurableClass.kwarg1', 'valid')
@@ -539,19 +542,19 @@ class ConfigTest(absltest.TestCase):
     config.parse_config('var_arg_fn.anything_is_fine = 0')
 
     err_regexp = ".* doesn't have a parameter.*\n  In bindings string line 1"
-    with six.assertRaisesRegex(self, ValueError, err_regexp):
+    with self.assertRaisesRegex(ValueError, err_regexp):
       config.parse_config('configurable2.not_a_parameter = 0')
-    with six.assertRaisesRegex(self, ValueError, err_regexp):
+    with self.assertRaisesRegex(ValueError, err_regexp):
       config.parse_config('ConfigurableClass.not_a_parameter = 0')
 
     config.external_configurable(lambda arg: arg, 'lamdba1', blacklist=['arg'])
     config.external_configurable(lambda arg: arg, 'lambda2', whitelist=['arg'])
 
     err_regexp = '.* not a parameter of'
-    with six.assertRaisesRegex(self, ValueError, err_regexp):
+    with self.assertRaisesRegex(ValueError, err_regexp):
       config.external_configurable(
           lambda arg: arg, 'lambda3', blacklist=['nonexistent'])
-    with six.assertRaisesRegex(self, ValueError, err_regexp):
+    with self.assertRaisesRegex(ValueError, err_regexp):
       config.external_configurable(
           lambda arg: arg, 'lambda4', whitelist=['nonexistent'])
 
@@ -563,7 +566,7 @@ class ConfigTest(absltest.TestCase):
     err_regexp = (r".*\n  No values supplied .*: \['arg3'\]\n"
                   r"  Gin had values bound for: \['arg2', 'kwarg2'\]\n"
                   r"  Caller supplied values for: \['arg1', 'kwarg1'\]")
-    with six.assertRaisesRegex(self, TypeError, err_regexp):
+    with self.assertRaisesRegex(TypeError, err_regexp):
       required_args(None, kwarg1=None)  # pylint: disable=no-value-for-parameter
 
   def testMissingPositionalParameterVarargs(self):
@@ -574,7 +577,7 @@ class ConfigTest(absltest.TestCase):
     err_regexp = (r".*\n  No values supplied .*: \['arg3'\]\n"
                   r"  Gin had values bound for: \['arg2', 'kwarg2'\]\n"
                   r"  Caller supplied values for: \['arg1', 'kwarg1'\]")
-    with six.assertRaisesRegex(self, TypeError, err_regexp):
+    with self.assertRaisesRegex(TypeError, err_regexp):
       # pylint: disable=no-value-for-parameter
       required_with_vargs(None, kwarg1=None)
 
@@ -865,7 +868,9 @@ class ConfigTest(absltest.TestCase):
 
     @config.configurable('broken_function')
     def borked_fn(arg):  # pylint: disable=unused-variable
+      # pytype: disable=wrong-keyword-args
       some_fn(nonexistent_arg=arg)  # pylint: disable=unexpected-keyword-arg
+      # pytype: enable=wrong-keyword-args
 
     config.parse_config([
         'configurable2.non_kwarg = @broken_function()',
@@ -874,11 +879,11 @@ class ConfigTest(absltest.TestCase):
     ])
 
     expected_msg_regexp = r"'broken_function' \(<function .*borked_fn.*\)$"
-    with six.assertRaisesRegex(self, TypeError, expected_msg_regexp):
+    with self.assertRaisesRegex(TypeError, expected_msg_regexp):
       configurable2()  # pylint: disable=no-value-for-parameter
 
     expected_msg_regexp = r"'broken_function' \(<.*\) in scope 'scoped'$"
-    with six.assertRaisesRegex(self, TypeError, expected_msg_regexp):
+    with self.assertRaisesRegex(TypeError, expected_msg_regexp):
       ConfigurableClass()  # pylint: disable=no-value-for-parameter
 
   def testOperativeConfigStr(self):
@@ -1168,6 +1173,43 @@ class ConfigTest(absltest.TestCase):
           'test_required_whitelist',
           whitelist=['arg2'])
 
+  def testKwOnlyArgs(self):
+    config_str = """
+      fn_with_kw_only_args.arg1 = 'arg1'
+      fn_with_kw_only_args.kwarg1 = 'kwarg1'
+    """
+
+    arg, kwarg = fn_with_kw_only_args(None)
+    self.assertIsNone(arg)
+    self.assertIsNone(kwarg)
+    self.assertIn('fn_with_kw_only_args.kwarg1 = None',
+                  config.operative_config_str())
+
+    config.parse_config(config_str)
+
+    arg, kwarg = fn_with_kw_only_args('arg1')
+    self.assertEqual(arg, 'arg1')
+    self.assertEqual(kwarg, 'kwarg1')
+    self.assertIn("fn_with_kw_only_args.kwarg1 = 'kwarg1'",
+                  config.operative_config_str())
+
+  def testKwOnlyRequiredArgs(self):
+    expected_err_regexp = (
+        r'Required bindings for `fn_with_kw_only_args` not provided in config: '
+        r"\['kwarg1'\]")
+    with self.assertRaisesRegex(RuntimeError, expected_err_regexp):
+      fn_with_kw_only_args('positional', kwarg1=config.REQUIRED)
+
+  def testKwOnlyRequiredArgsInSignature(self):
+    expected_err_regexp = (
+        r'Required bindings for `fn_with_kw_only_required_arg` not provided in '
+        r"config: \['kwarg1'\]")
+    with self.assertRaisesRegex(RuntimeError, expected_err_regexp):
+      fn_with_kw_only_required_arg('positional')
+    arg, kwarg = fn_with_kw_only_required_arg('positional', kwarg1='a value')
+    self.assertEqual(arg, 'positional')
+    self.assertEqual(kwarg, 'a value')
+
   def testConfigScope(self):
     config_str = """
       configurable2.non_kwarg = 'no_scope_arg_0'
@@ -1197,15 +1239,15 @@ class ConfigTest(absltest.TestCase):
     with config.config_scope('scope_1/scope_2'):
       self.assertEqual(configurable2(), ('scope_2_arg_0', 'scope_1_arg_1'))
 
-    with six.assertRaisesRegex(self, ValueError, 'Invalid value'):
+    with self.assertRaisesRegex(ValueError, 'Invalid value'):
       with config.config_scope(4):
         pass
 
-    with six.assertRaisesRegex(self, ValueError, 'Invalid value'):
+    with self.assertRaisesRegex(ValueError, 'Invalid value'):
       with config.config_scope('inv@lid/scope/name!'):
         pass
 
-    with six.assertRaisesRegex(self, ValueError, 'Invalid value'):
+    with self.assertRaisesRegex(ValueError, 'Invalid value'):
       with config.config_scope(0):
         pass
 
@@ -1316,7 +1358,8 @@ class ConfigTest(absltest.TestCase):
     def duplicate_fn1():  # pylint: disable=unused-variable
       return 'duplicate_fn1'
 
-    with six.assertRaisesRegex(self, ValueError, 'A configurable matching'):
+    with self.assertRaisesRegex(ValueError, 'A configurable matching'):
+
       @config.configurable('duplicate_fn')
       def duplicate_fn2():  # pylint: disable=unused-variable
         pass
@@ -1332,7 +1375,8 @@ class ConfigTest(absltest.TestCase):
       def duplicate_fn3():  # pylint: disable=unused-variable
         return 'duplicate_fn3'
 
-    with six.assertRaisesRegex(self, ValueError, 'A configurable matching'):
+    with self.assertRaisesRegex(ValueError, 'A configurable matching'):
+
       @config.configurable('duplicate_fn')
       def duplicate_fn4():  # pylint: disable=unused-variable
         pass
@@ -1499,7 +1543,7 @@ class ConfigTest(absltest.TestCase):
     non_kwarg, _ = configurable2()  # pylint: disable=no-value-for-parameter
     self.assertIs(non_kwarg, value)  # We should be getting the same object.
 
-    with six.assertRaisesRegex(self, ValueError, 'Invalid constant selector'):
+    with self.assertRaisesRegex(ValueError, 'Invalid constant selector'):
       config.constant('CONST@NTINOPLE', 0)
 
   def testConstantModuleDisambiguation(self):
@@ -1546,7 +1590,7 @@ class ConfigTest(absltest.TestCase):
     self.assertIsNot(class2.kwarg1, class2.kwarg2)
     with config.config_scope('error'):
       expected = "The constructor for singleton 'not_callable' is not callable."
-      with six.assertRaisesRegex(self, ValueError, expected):
+      with self.assertRaisesRegex(ValueError, expected):
         ConfigurableClass()
 
   def testQueryParameter(self):
@@ -1560,7 +1604,7 @@ class ConfigTest(absltest.TestCase):
     with self.assertRaises(ValueError):
       # Parameter not set.
       config.query_parameter('whitelisted_configurable.other')
-    with six.assertRaisesRegex(self, TypeError, 'expected string*'):
+    with self.assertRaisesRegex(TypeError, 'expected string*'):
       config.query_parameter(4)
 
   def testQueryConstant(self):
@@ -1568,8 +1612,7 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(0.5772156649, config.query_parameter('Euler'))
     config.constant('OLD.ANSWER', 0)
     config.constant('NEW.ANSWER', 10)
-    with six.assertRaisesRegex(
-        self, ValueError, 'Ambiguous constant selector*'):
+    with self.assertRaisesRegex(ValueError, 'Ambiguous constant selector*'):
       config.query_parameter('ANSWER')
     self.assertEqual(0, config.query_parameter('OLD.ANSWER'))
     self.assertEqual(10, config.query_parameter('NEW.ANSWER'))
@@ -1618,11 +1661,11 @@ class ConfigTest(absltest.TestCase):
 
   def testConstantsFromEnumNotEnum(self):
     expected_msg = "Class 'FakeEnum' is not subclass of enum."
-    with six.assertRaisesRegex(self, TypeError, expected_msg):
+    with self.assertRaisesRegex(TypeError, expected_msg):
 
       # pylint: disable=unused-variable
       @config.constants_from_enum
-      class FakeEnum(object):
+      class FakeEnum:
         A = 0,
         B = 1
 

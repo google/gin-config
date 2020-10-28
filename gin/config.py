@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# -*- coding: UTF-8 -*-
 """Defines the Gin configuration framework.
 
 Programs frequently have a number of "hyperparameters" that require variation
@@ -82,11 +81,6 @@ On the other hand, when the `drink` function is called, it will receive the
 parameter, due to the trailing `()` in `@serve_random_cocktail()`.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-# Using Type Annotations.
-from __future__ import print_function
-
 import collections
 import contextlib
 import copy
@@ -104,8 +98,6 @@ from typing import Optional, Sequence
 from gin import config_parser
 from gin import selector_map
 from gin import utils
-
-import six
 
 
 class _ScopeManager(threading.local):
@@ -262,8 +254,7 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, subclass=False):
       __module__ = fn_or_cls.__module__
 
     DecoratedClass.__name__ = fn_or_cls.__name__
-    if six.PY3:
-      DecoratedClass.__qualname__ = fn_or_cls.__qualname__
+    DecoratedClass.__qualname__ = fn_or_cls.__qualname__
     cls = DecoratedClass
   else:
     cls = fn_or_cls
@@ -288,7 +279,7 @@ def _raise_unknown_reference_error(ref, additional_msg=''):
   raise ValueError(err_str.format(ref.selector, maybe_parens, additional_msg))
 
 
-class ConfigurableReference(object):
+class ConfigurableReference:
   """Represents a reference to a configurable function or class."""
 
   def __init__(self, scoped_selector, evaluate):
@@ -305,7 +296,7 @@ class ConfigurableReference(object):
     def reference_decorator(fn):
       if self._scopes:
 
-        @six.wraps(fn)
+        @functools.wraps(fn)
         def scoping_wrapper(*args, **kwargs):
           with config_scope(self._scopes):
             return fn(*args, **kwargs)
@@ -391,7 +382,7 @@ class ConfigurableReference(object):
     return self._scoped_configurable_fn
 
 
-class _UnknownConfigurableReference(object):
+class _UnknownConfigurableReference:
   """Represents a reference to an unknown configurable.
 
   This class acts as a substitute for `ConfigurableReference` when the selector
@@ -508,7 +499,7 @@ class ParsedBindingKey(
 
     if isinstance(binding_key, (list, tuple)):
       scope, selector, arg_name = binding_key
-    elif isinstance(binding_key, six.string_types):
+    elif isinstance(binding_key, str):
       scope, selector, arg_name = config_parser.parse_binding_key(binding_key)
     else:
       err_str = 'Invalid type for binding_key: {}.'
@@ -610,7 +601,7 @@ def clear_config(clear_constants=False):
   else:
     saved_constants = _CONSTANTS.copy()
     _CONSTANTS.clear()  # Clear then redefine constants (re-adding bindings).
-    for name, value in six.iteritems(saved_constants):
+    for name, value in saved_constants.items():
       constant(name, value)
   _IMPORTED_MODULES.clear()
   _OPERATIVE_CONFIG.clear()
@@ -714,14 +705,9 @@ def _might_have_parameter(fn_or_cls, arg_name):
   while hasattr(fn, '__wrapped__'):
     fn = fn.__wrapped__
   arg_spec = _get_cached_arg_spec(fn)
-  if six.PY3:
-    if arg_spec.varkw:
-      return True
-    return arg_name in arg_spec.args or arg_name in arg_spec.kwonlyargs
-  else:
-    if arg_spec.keywords:
-      return True
-    return arg_name in arg_spec.args
+  if arg_spec.varkw:
+    return True
+  return arg_name in arg_spec.args or arg_name in arg_spec.kwonlyargs
 
 
 def _validate_parameters(fn_or_cls, arg_name_list, err_prefix):
@@ -735,12 +721,11 @@ def _get_cached_arg_spec(fn):
   """Gets cached argspec for `fn`."""
   arg_spec = _ARG_SPEC_CACHE.get(fn)
   if arg_spec is None:
-    arg_spec_fn = inspect.getfullargspec if six.PY3 else inspect.getargspec
     try:
-      arg_spec = arg_spec_fn(fn)
+      arg_spec = inspect.getfullargspec(fn)
     except TypeError:
       # `fn` might be a callable object.
-      arg_spec = arg_spec_fn(fn.__call__)
+      arg_spec = inspect.getfullargspec(fn.__call__)
     _ARG_SPEC_CACHE[fn] = arg_spec
   return arg_spec
 
@@ -770,7 +755,7 @@ def _get_kwarg_defaults(fn):
   else:
     arg_vals = {}
 
-  if six.PY3 and arg_spec.kwonlydefaults:
+  if arg_spec.kwonlydefaults:
     arg_vals.update(arg_spec.kwonlydefaults)
 
   return arg_vals
@@ -781,7 +766,7 @@ def _get_validated_required_kwargs(fn, fn_descriptor, whitelist, blacklist):
   kwarg_defaults = _get_kwarg_defaults(fn)
 
   required_kwargs = []
-  for kwarg, default in six.iteritems(kwarg_defaults):
+  for kwarg, default in kwarg_defaults.items():
     if default is REQUIRED:
       if blacklist and kwarg in blacklist:
         err_str = "Argument '{}' of {} marked REQUIRED but blacklisted."
@@ -812,7 +797,7 @@ def _get_default_configurable_parameter_values(fn, whitelist, blacklist):
 
   # Now, eliminate keywords that are blacklisted, or aren't whitelisted (if
   # there's a whitelist), or aren't representable as a literal value.
-  for k in list(six.iterkeys(arg_vals)):
+  for k in list(arg_vals):
     whitelist_fail = whitelist and k not in whitelist
     blacklist_fail = blacklist and k in blacklist
     representable = _is_literally_representable(arg_vals[k])
@@ -826,7 +811,7 @@ def _order_by_signature(fn, arg_names):
   """Orders given `arg_names` based on their order in the signature of `fn`."""
   arg_spec = _get_cached_arg_spec(fn)
   all_args = list(arg_spec.args)
-  if six.PY3 and arg_spec.kwonlyargs:
+  if arg_spec.kwonlyargs:
     all_args.extend(arg_spec.kwonlyargs)
   ordered = [arg for arg in all_args if arg in arg_names]
   # Handle any leftovers corresponding to varkwargs in the order we got them.
@@ -905,7 +890,7 @@ def config_scope(name_or_scope):
     valid_value = True
     if isinstance(name_or_scope, list):
       new_scope = name_or_scope
-    elif name_or_scope and isinstance(name_or_scope, six.string_types):
+    elif name_or_scope and isinstance(name_or_scope, str):
       new_scope = current_scope()  # Returns a copy.
       new_scope.extend(name_or_scope.split('/'))
     else:
@@ -951,7 +936,7 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
   initial_configurable_defaults = _get_default_configurable_parameter_values(
       fn, whitelist, blacklist)
 
-  @six.wraps(fn)
+  @functools.wraps(fn)
   def gin_wrapper(*args, **kwargs):
     """Supplies fn with parameter values from the configuration."""
     scope_components = current_scope()
@@ -980,7 +965,7 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
         required_arg_indexes.append(i)
 
     caller_required_kwargs = []
-    for kwarg, value in six.iteritems(kwargs):
+    for kwarg, value in kwargs.items():
       if value is REQUIRED:
         caller_required_kwargs.append(kwarg)
 
@@ -1214,7 +1199,7 @@ def configurable(name_or_fn=None, module=None, whitelist=None, blacklist=None):
   constructors are made configurable:
 
       @config.configurable
-      class SomeClass(object):
+      class SomeClass:
         def __init__(self, param1, param2='a default value'):
           ...
 
@@ -1339,7 +1324,7 @@ def register(name_or_fn=None, module=None, whitelist=None, blacklist=None):
   constructors are made configurable:
 
       @config.register
-      class SomeClass(object):
+      class SomeClass:
         def __init__(self, param1, param2='a default value'):
           ...
 
@@ -1440,7 +1425,7 @@ def _config_str(configuration_object,
     formatted_statements.append('')
 
   macros = {}
-  for (scope, selector), config in six.iteritems(configuration_object):
+  for (scope, selector), config in configuration_object.items():
     if _REGISTRY[selector].fn_or_cls == macro:  # pylint: disable=comparison-with-callable
       macros[scope, selector] = config
   if macros:
@@ -1462,9 +1447,9 @@ def _config_str(configuration_object,
 
     minimal_selector = _REGISTRY.minimal_selector(configurable_.selector)
     scoped_selector = (scope + '/' if scope else '') + minimal_selector
-    parameters = [(k, v)
-                  for k, v in six.iteritems(config)
-                  if _is_literally_representable(v)]
+    parameters = [
+        (k, v) for k, v in config.items() if _is_literally_representable(v)
+    ]
     formatted_statements.append('# Parameters for {}:'.format(scoped_selector))
     formatted_statements.append('# ' + '=' * (max_line_length - 2))
     for arg, val in sorted(parameters):
@@ -1821,7 +1806,7 @@ def log_includes_and_imports(
 
 def parse_value(value):
   """Parse and return a single Gin value."""
-  if not isinstance(value, six.string_types):
+  if not isinstance(value, str):
     raise ValueError('value ({}) should be a string type.'.format(value))
   return config_parser.ConfigParser(value, ParserDelegate()).parse_value()
 
@@ -1899,14 +1884,14 @@ def finalize():
   for hook in _FINALIZE_HOOKS:
     new_bindings = hook(_CONFIG)
     if new_bindings is not None:
-      for key, value in six.iteritems(new_bindings):
+      for key, value in new_bindings.items():
         pbk = ParsedBindingKey(key)
         if pbk in bindings:
           err_str = 'Received conflicting updates when running {}.'
           raise ValueError(err_str.format(hook))
         bindings[pbk] = value
 
-  for pbk, value in six.iteritems(bindings):
+  for pbk, value in bindings.items():
     bind_parameter(pbk, value)
 
   _set_config_is_locked(True)
@@ -1931,7 +1916,7 @@ def register_finalize_hook(fn):
 
 def _iterate_flattened_values(value):
   """Provides an iterator over all values in a nested structure."""
-  if isinstance(value, six.string_types):
+  if isinstance(value, str):
     yield value
     return
 
@@ -2091,8 +2076,8 @@ def validate_macros_hook(config):
 def find_unknown_references_hook(config):
   """Hook to find/raise errors for references to unknown configurables."""
   additional_msg_fmt = " In binding for '{}'."
-  for (scope, selector), param_bindings in six.iteritems(config):
-    for param_name, param_value in six.iteritems(param_bindings):
+  for (scope, selector), param_bindings in config.items():
+    for param_name, param_value in param_bindings.items():
       for maybe_unknown in _iterate_flattened_values(param_value):
         if isinstance(maybe_unknown, _UnknownConfigurableReference):
           scope_str = scope + '/' if scope else ''
