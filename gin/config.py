@@ -1187,7 +1187,7 @@ def configurable(name_or_fn=None, module=None, whitelist=None, blacklist=None):
   The decorator can be supplied with parameters to specify the configurable name
   or supply a whitelist/blacklist:
 
-      @config.configurable('explicit_configurable_name', whitelist='param2')
+      @config.configurable('explicit_configurable_name', whitelist=['param2'])
       def some_configurable_function(param1, param2='a default value'):
         ...
 
