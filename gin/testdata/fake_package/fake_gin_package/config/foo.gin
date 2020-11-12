@@ -1,0 +1,3 @@
+include 'fake_gin_package/parent.gin'
+
+my_func.a = 1000
