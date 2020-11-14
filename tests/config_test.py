@@ -243,6 +243,65 @@ class ConfigurableClass:
 
 
 @config.configurable
+class ConfigurableClassWithNew(object):
+  """A configurable class with __new__."""
+
+  def __new__(cls, kwarg1=None, kwarg2=None, return_none=False):
+    if return_none: # this will test __new__ and __init__ separation
+      return None
+    instance = super(ConfigurableClassWithNew, cls).__new__(cls)
+    instance.kwarg1 = kwarg1
+    return instance
+
+  def __init__(self, kwarg1=None, kwarg2=None, return_none=False):
+    self.kwarg1 = kwarg1
+    self.kwarg2 = kwarg2
+
+
+class Meta(type):
+  def __call__(cls, post_new=None, *args, **kwargs):
+    instance = cls.__new__(cls, *args, **kwargs)
+    if post_new is not None:  # this will allow to inspect post-new state
+      post_new(instance)
+    instance.__init__(*args, **kwargs)
+    return instance
+
+
+@config.configurable
+class ConfigurableClassWithMetaAndNew(object, metaclass=Meta):
+  """A configurable class with metaclass and __new__"""
+
+  def __new__(cls, kwarg1=None, kwarg2=None, return_none=False):
+    if return_none: # this will test __new__ and __init__ separation
+      return None
+    instance = super(ConfigurableClassWithMetaAndNew, cls).__new__(cls)
+    instance.kwarg1 = kwarg1
+    return instance
+
+  def __init__(self, kwarg1=None, kwarg2=None, return_none=False):
+    self.kwarg1 = kwarg1
+    self.kwarg2 = kwarg2
+
+
+@config.configurable
+class ConfigurableClassWithMeta(object, metaclass=Meta):
+  """A configurable class with metaclass"""
+
+  def __init__(self, kwarg1=None, kwarg2=None):
+    self.kwarg1 = kwarg1
+    self.kwarg2 = kwarg2
+
+
+@config.configurable
+class FaultyConfigurableClassWithMeta(object, metaclass=Meta):
+  """A configurable class with metaclass"""
+  class Faulty(AssertionError): pass
+
+  def __init__(self, kwarg1=None, kwarg2=None):
+    raise FaultyConfigurableClassWithMeta.Faulty("Purposeful failure")
+
+
+@config.configurable
 class ConfigurableSubclass(ConfigurableClass):
   """A subclass of a configurable class."""
 
@@ -353,6 +412,23 @@ class ExternalAbstractConfigurableSubclass(AbstractConfigurable):
     pass
 
 config.external_configurable(ExternalAbstractConfigurableSubclass)
+
+
+class ExternalConfigurableClassWithMetaAndNew(object, metaclass=Meta):
+  """A configurable class with metaclass and __new__"""
+
+  def __new__(cls, kwarg1=None, kwarg2=None, return_none=False):
+    if return_none: # this will test __new__ and __init__ separation
+      return None
+    instance = super(ExternalConfigurableClassWithMetaAndNew, cls).__new__(cls)
+    instance.kwarg1 = kwarg1
+    return instance
+
+  def __init__(self, kwarg1=None, kwarg2=None, return_none=False):
+    self.kwarg1 = kwarg1
+    self.kwarg2 = kwarg2
+
+config.external_configurable(ExternalConfigurableClassWithMetaAndNew)
 
 
 class ConfigTest(absltest.TestCase):
@@ -660,6 +736,150 @@ class ConfigTest(absltest.TestCase):
       pickle.dumps(instance)
     except AttributeError:
       self.fail('Configurable class not picklable')
+    except pickle.PicklingError:
+      self.fail('Configurable class not picklable')
+
+  def testConfigurableClassWithNew(self):
+    config_str = """
+      ConfigurableClassWithNew.kwarg1 = 'statler'
+      ConfigurableClassWithNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    instance = ConfigurableClassWithNew()
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+    try:
+      pickle.dumps(instance)
+    except AttributeError:
+      self.fail('Configurable class with __new__ not picklable')
+    except pickle.PicklingError:
+      self.fail('Configurable class with __new__ not picklable')
+  
+  def testConfigurableClassWithNewCanReturnOtherType(self):
+    config_str = """
+      ConfigurableClassWithNew.kwarg1 = 'statler'
+      ConfigurableClassWithNew.kwarg2 = 'waldorf'
+      ConfigurableClassWithNew.return_none = True
+    """
+    config.parse_config(config_str)
+    instance = ConfigurableClassWithNew()
+    self.assertIsNotNone(instance)
+
+    config_str = """
+      ConfigurableClassWithNew.kwarg1 = 'statler'
+      ConfigurableClassWithNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    instance = ConfigurableClassWithNew(return_none=True)
+    self.assertIsNone(instance)
+
+  def testConfigurableClassWithMetaAndNew(self):
+    config_str = """
+      ConfigurableClassWithMetaAndNew.kwarg1 = 'statler'
+      ConfigurableClassWithMetaAndNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    instance = ConfigurableClassWithMetaAndNew()
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+    try:
+      pickle.dumps(instance)
+    except AttributeError:
+      self.fail('Configurable class with metaclass and __new__ not picklable')
+    except pickle.PicklingError:
+      self.fail('Configurable class with metaclass and __new__ not picklable')
+
+  def testConfigurableClassWithMetaAndNewAllowsInjections(self):
+    config_str = """
+      ConfigurableClassWithMetaAndNew.kwarg1 = 'statler'
+      ConfigurableClassWithMetaAndNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    class InjectionError(AssertionError): pass
+    def fail(_):
+      raise InjectionError("Purposeful fail")
+    try:
+      ConfigurableClassWithMetaAndNew(post_new=fail)
+      self.fail('ConfigurableClassWithMetaAndNew disallows injections')
+    except InjectionError:
+      pass  # that's expected
+
+  def testConfigurableClassWithMetaAndNewSeparatesNewAndInit(self):
+    config_str = """
+      ConfigurableClassWithMetaAndNew.kwarg1 = 'statler'
+      ConfigurableClassWithMetaAndNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    def calls_new_with_no_injection_when_init_present(instance):
+      self.assertIsNone(instance.kwarg1)
+      self.assertFalse(hasattr(instance, 'kwarg2'))
+    instance = ConfigurableClassWithMetaAndNew(
+      post_new=calls_new_with_no_injection_when_init_present
+    )
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+
+  def testConfigurableClassWithMeta(self):
+    config_str = """
+      ConfigurableClassWithMeta.kwarg1 = 'statler'
+      ConfigurableClassWithMeta.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    instance = ConfigurableClassWithMeta()
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+    try:
+      pickle.dumps(instance)
+    except AttributeError:
+      self.fail('Configurable class with metaclass not picklable')
+    except pickle.PicklingError:
+      self.fail('Configurable class with metaclass not picklable')
+
+  def testConfigurableClassWithMetaAllowsInjections(self):
+    config_str = """
+      ConfigurableClassWithMeta.kwarg1 = 'statler'
+      ConfigurableClassWithMeta.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    class InjectionError(AssertionError): pass
+    def fail(_):
+      raise InjectionError("Purposeful fail")
+    try:
+      ConfigurableClassWithMeta(post_new=fail)
+      self.fail('ConfigurableClassWithMeta disallows injections')
+    except InjectionError:
+      pass  # that's expected
+
+  def testConfigurableClassWithMetaSeparatesNewAndInit(self):
+    config_str = """
+      ConfigurableClassWithMeta.kwarg1 = 'statler'
+      ConfigurableClassWithMeta.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    def no_attrs(instance):
+      self.assertFalse(hasattr(instance, 'kwarg1'))
+      self.assertFalse(hasattr(instance, 'kwarg2'))
+    instance = ConfigurableClassWithMeta(post_new=no_attrs)
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+
+  def testFaultyConfigurableClassWithMeta(self):
+    config_str = """
+      FaultyConfigurableClassWithMeta.kwarg1 = 'statler'
+      FaultyConfigurableClassWithMeta.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    class InjectionError(AssertionError): pass
+    def fail(_):
+      raise InjectionError("Purposeful fail")
+    try:
+      FaultyConfigurableClassWithMeta(post_new=fail)
+    except InjectionError:
+      pass  # that's expected
+    try:
+      FaultyConfigurableClassWithMeta()
+    except FaultyConfigurableClassWithMeta.Faulty:
+      pass  # that's expected
 
   def testConfigurableReferenceClassIdentityIsPreserved(self):
     config_str = """
@@ -716,6 +936,8 @@ class ConfigTest(absltest.TestCase):
       pickle.dumps(sub_instance)
     except AttributeError:
       self.fail('Configurable subclass not picklable')
+    except pickle.PicklingError:
+      self.fail('Configurable subclass not picklable')
 
   def testConfigurableMethod(self):
     config_str = """
@@ -756,6 +978,8 @@ class ConfigTest(absltest.TestCase):
     try:
       pickle.dumps(instance)
     except AttributeError:
+      self.fail('External configurable class not picklable')
+    except pickle.PicklingError as ex:
       self.fail('External configurable class not picklable')
 
   def testAbstractExternalConfigurableClass(self):
@@ -1740,6 +1964,52 @@ class ConfigTest(absltest.TestCase):
         [], ['TEST=1'], print_includes_and_imports=True)
     self.assertListEqual(result, [])
 
+  def testExternalConfigurableClassWithMetaAndNew(self):
+    config_str = """
+      ExternalConfigurableClassWithMetaAndNew.kwarg1 = 'statler'
+      ExternalConfigurableClassWithMetaAndNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    instance = ExternalConfigurableClassWithMetaAndNew()
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+    try:
+      pickle.dumps(instance)
+    except AttributeError:
+      self.fail('External configurable class with meta and __new__ not picklable')
+    except pickle.PicklingError:
+      self.fail('External configurable class not picklable')
+
+  def testExternalConfigurableClassWithMetaAndNewAllowsInjections(self):
+    config_str = """
+      ExternalConfigurableClassWithMetaAndNew.kwarg1 = 'statler'
+      ExternalConfigurableClassWithMetaAndNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    class InjectionError(AssertionError): pass
+    def fail(_):
+      raise InjectionError("Purposeful fail")
+    try:
+      ExternalConfigurableClassWithMetaAndNew(post_new=fail)
+      self.fail('ExternalConfigurableClassWithMetaAndNew disallows injections')
+    except InjectionError:
+      pass  # that's expected
+
+  def testExternalConfigurableClassWithMetaAndNewSeparatesNewAndInit(self):
+    config_str = """
+      ExternalConfigurableClassWithMetaAndNew.kwarg1 = 'statler'
+      ExternalConfigurableClassWithMetaAndNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    def calls_new_with_no_injection_when_init_present(instance):
+      self.assertIsNone(instance.kwarg1)
+      self.assertFalse(hasattr(instance, 'kwarg2'))
+    instance = ExternalConfigurableClassWithMetaAndNew(
+      post_new=calls_new_with_no_injection_when_init_present
+    )
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+    
 
 if __name__ == '__main__':
   absltest.main()
