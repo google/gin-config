@@ -248,12 +248,17 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, subclass=False):
   construction_fn = _find_class_construction_fn(fn_or_cls)
 
   if subclass:
-
+    klass = fn_or_cls
+    while hasattr(klass, '_gin_decorated') and klass._gin_decorated:
+      klass = klass.__bases__[0]
     class DecoratedClass(fn_or_cls):
       __doc__ = fn_or_cls.__doc__
       __module__ = fn_or_cls.__module__
-
+      __class__ = klass
+      def __reduce__(self):
+        return super(DecoratedClass, self).__reduce__()
     DecoratedClass.__name__ = fn_or_cls.__name__
+    DecoratedClass._gin_decorated = True
     DecoratedClass.__qualname__ = fn_or_cls.__qualname__
     cls = DecoratedClass
   else:
@@ -262,16 +267,6 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, subclass=False):
   decorated_fn = decorator(_ensure_wrappability(construction_fn))
   if construction_fn.__name__ == '__new__':
     decorated_fn = staticmethod(decorated_fn)
-  elif subclass:
-    # this ensures picklability, as we produce the original class instance,
-    # the implicit inheritance is skipped
-    def _new(klass, *args, **kwargs):
-      if klass is DecoratedClass:
-        klass = fn_or_cls
-      obj = fn_or_cls.__new__(klass, *args, **kwargs)
-      decorated_fn(obj, *args, **kwargs)
-      return obj
-    setattr(cls, '__new__', _new)
   setattr(cls, construction_fn.__name__, decorated_fn)
   return cls
 
