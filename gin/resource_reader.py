@@ -14,8 +14,6 @@
 # limitations under the License.
 
 """Module for reading gin configs in the python system path."""
-from __future__ import absolute_import
-from __future__ import print_function
 
 import importlib
 import logging

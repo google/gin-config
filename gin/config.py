@@ -31,7 +31,7 @@ https://github.com/google/gin-config/tree/master/docs/index.md
 Functions and classes can be marked configurable using the `@configurable`
 decorator, which associates a "configurable name" with the function or class (by
 default, just the function or class name). Optionally, parameters can be
-whitelisted or blacklisted to mark only a subset of the function's parameters as
+allowlisted or denylisted to mark only a subset of the function's parameters as
 configurable. Once parameters have been bound (see below) to this function, any
 subsequent calls will have those parameters automatically supplied by Gin.
 
@@ -274,7 +274,7 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, subclass=False):
 class Configurable(
     collections.namedtuple(
         'Configurable',
-        ['fn_or_cls', 'name', 'module', 'whitelist', 'blacklist', 'selector'])):
+        ['fn_or_cls', 'name', 'module', 'allowlist', 'denylist', 'selector'])):
   pass
 
 
@@ -481,7 +481,7 @@ class ParsedBindingKey(
 
     This function will parse `binding_key` (if necessary), and ensure that the
     specified parameter can be bound for the given configurable selector (i.e.,
-    that the parameter isn't blacklisted or not whitelisted if a whitelist was
+    that the parameter isn't denylisted or not allowlisted if an allowlist was
     provided).
 
     Args:
@@ -497,7 +497,7 @@ class ParsedBindingKey(
     Raises:
       ValueError: If no function can be found matching the configurable name
         specified by `binding_key`, or if the specified parameter name is
-        blacklisted or not in the function's whitelist (if present).
+        denylisted or not in the function's allowlist (if present).
     """
     if isinstance(binding_key, ParsedBindingKey):
       return super(ParsedBindingKey, cls).__new__(cls, *binding_key)  # pytype: disable=missing-parameter
@@ -518,12 +518,12 @@ class ParsedBindingKey(
       err_str = "Configurable '{}' doesn't have a parameter named '{}'."
       raise ValueError(err_str.format(selector, arg_name))
 
-    if configurable_.whitelist and arg_name not in configurable_.whitelist:
-      err_str = "Configurable '{}' doesn't include kwarg '{}' in its whitelist."
+    if configurable_.allowlist and arg_name not in configurable_.allowlist:
+      err_str = "Configurable '{}' doesn't include kwarg '{}' in its allowlist."
       raise ValueError(err_str.format(selector, arg_name))
 
-    if configurable_.blacklist and arg_name in configurable_.blacklist:
-      err_str = "Configurable '{}' has blacklisted kwarg '{}'."
+    if configurable_.denylist and arg_name in configurable_.denylist:
+      err_str = "Configurable '{}' has denylisted kwarg '{}'."
       raise ValueError(err_str.format(selector, arg_name))
 
     return super(ParsedBindingKey, cls).__new__(
@@ -642,7 +642,7 @@ def bind_parameter(binding_key, value):
     RuntimeError: If the config is locked.
     ValueError: If no function can be found matching the configurable name
       specified by `binding_key`, or if the specified parameter name is
-      blacklisted or not in the function's whitelist (if present).
+      denylisted or not in the function's allowlist (if present).
   """
   if config_is_locked():
     raise RuntimeError('Attempted to modify locked Gin config.')
@@ -669,7 +669,7 @@ def query_parameter(binding_key):
   Raises:
     ValueError: If no function can be found matching the configurable name
       specified by `biding_key`, or if the specified parameter name is
-      blacklisted or not in the function's whitelist (if present) or if there is
+      denylisted or not in the function's allowlist (if present) or if there is
       no value bound for the queried parameter or configurable.
   """
   if config_parser.MODULE_RE.match(binding_key):
@@ -766,47 +766,47 @@ def _get_kwarg_defaults(fn):
   return arg_vals
 
 
-def _get_validated_required_kwargs(fn, fn_descriptor, whitelist, blacklist):
-  """Gets required argument names, and validates against white/blacklist."""
+def _get_validated_required_kwargs(fn, fn_descriptor, allowlist, denylist):
+  """Gets required argument names, and validates against white/denylist."""
   kwarg_defaults = _get_kwarg_defaults(fn)
 
   required_kwargs = []
   for kwarg, default in kwarg_defaults.items():
     if default is REQUIRED:
-      if blacklist and kwarg in blacklist:
-        err_str = "Argument '{}' of {} marked REQUIRED but blacklisted."
+      if denylist and kwarg in denylist:
+        err_str = "Argument '{}' of {} marked REQUIRED but denylisted."
         raise ValueError(err_str.format(kwarg, fn_descriptor))
-      if whitelist and kwarg not in whitelist:
-        err_str = "Argument '{}' of {} marked REQUIRED but not whitelisted."
+      if allowlist and kwarg not in allowlist:
+        err_str = "Argument '{}' of {} marked REQUIRED but not allowlisted."
         raise ValueError(err_str.format(kwarg, fn_descriptor))
       required_kwargs.append(kwarg)
 
   return required_kwargs
 
 
-def _get_default_configurable_parameter_values(fn, whitelist, blacklist):
+def _get_default_configurable_parameter_values(fn, allowlist, denylist):
   """Retrieve all default values for configurable parameters of a function.
 
-  Any parameters included in the supplied blacklist, or not included in the
-  supplied whitelist, are excluded.
+  Any parameters included in the supplied denylist, or not included in the
+  supplied allowlist, are excluded.
 
   Args:
     fn: The function whose parameter values should be retrieved.
-    whitelist: The whitelist (or `None`) associated with the function.
-    blacklist: The blacklist (or `None`) associated with the function.
+    allowlist: The allowlist (or `None`) associated with the function.
+    denylist: The denylist (or `None`) associated with the function.
 
   Returns:
     A dictionary mapping configurable parameter names to their default values.
   """
   arg_vals = _get_kwarg_defaults(fn)
 
-  # Now, eliminate keywords that are blacklisted, or aren't whitelisted (if
-  # there's a whitelist), or aren't representable as a literal value.
+  # Now, eliminate keywords that are denylisted, or aren't allowlisted (if
+  # there's an allowlist), or aren't representable as a literal value.
   for k in list(arg_vals):
-    whitelist_fail = whitelist and k not in whitelist
-    blacklist_fail = blacklist and k in blacklist
+    allowlist_fail = allowlist and k not in allowlist
+    denylist_fail = denylist and k in denylist
     representable = _is_literally_representable(arg_vals[k])
-    if whitelist_fail or blacklist_fail or not representable:
+    if allowlist_fail or denylist_fail or not representable:
       del arg_vals[k]
 
   return arg_vals
@@ -916,7 +916,7 @@ def config_scope(name_or_scope):
     _SCOPE_MANAGER.exit_scope()
 
 
-def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
+def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
   """Creates the final Gin wrapper for the given function.
 
   Args:
@@ -927,8 +927,8 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
     name: The name given to the configurable.
     selector: The full selector of the configurable (name including any module
       components).
-    whitelist: A whitelist of configurable parameters.
-    blacklist: A blacklist of non-configurable parameters.
+    allowlist: An allowlist of configurable parameters.
+    denylist: A denylist of non-configurable parameters.
 
   Returns:
     The Gin wrapper around `fn`.
@@ -937,9 +937,9 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
   # can cache a few things here.
   fn_descriptor = "'{}' ('{}')".format(name, fn_or_cls)
   signature_required_kwargs = _get_validated_required_kwargs(
-      fn, fn_descriptor, whitelist, blacklist)
+      fn, fn_descriptor, allowlist, denylist)
   initial_configurable_defaults = _get_default_configurable_parameter_values(
-      fn, whitelist, blacklist)
+      fn, allowlist, denylist)
 
   @functools.wraps(fn)
   def gin_wrapper(*args, **kwargs):
@@ -1079,14 +1079,14 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist, blacklist):
 def _make_configurable(fn_or_cls,
                        name=None,
                        module=None,
-                       whitelist=None,
-                       blacklist=None,
+                       allowlist=None,
+                       denylist=None,
                        subclass=False):
   """Wraps `fn_or_cls` to make it configurable.
 
   Infers the configurable name from `fn_or_cls.__name__` if necessary, and
   updates global state to keep track of configurable name <-> function
-  mappings, as well as whitelisted and blacklisted parameters.
+  mappings, as well as allowlisted and denylisted parameters.
 
   Args:
     fn_or_cls: The function or class to decorate.
@@ -1097,8 +1097,8 @@ def _make_configurable(fn_or_cls,
     module: The module to associate with the configurable, to help handle naming
       collisions. If `None`, `fn_or_cls.__module__` will be used (if no module
       is specified as part of `name`).
-    whitelist: A whitelisted set of parameter names to supply values for.
-    blacklist: A blacklisted set of parameter names not to supply values for.
+    allowlist: An allowlisted set of parameter names to supply values for.
+    denylist: A denylisted set of parameter names not to supply values for.
     subclass: If `fn_or_cls` is a class and `subclass` is `True`, decorate by
       subclassing `fn_or_cls` and overriding its `__init__` method. If `False`,
       replace the existing `__init__` with a decorated version.
@@ -1110,7 +1110,7 @@ def _make_configurable(fn_or_cls,
   Raises:
     RuntimeError: If the config is locked.
     ValueError: If a configurable with `name` (or the name of `fn_or_cls`)
-      already exists, or if both a whitelist and blacklist are specified.
+      already exists, or if both an allowlist and denylist are specified.
   """
   if config_is_locked():
     err_str = 'Attempted to add a new configurable after the config was locked.'
@@ -1134,23 +1134,23 @@ def _make_configurable(fn_or_cls,
                '    gin.enter_interactive_mode()')
     raise ValueError(err_str.format(selector))
 
-  if whitelist and blacklist:
-    err_str = 'A whitelist or a blacklist can be specified, but not both.'
+  if allowlist and denylist:
+    err_str = 'An allowlist or a denylist can be specified, but not both.'
     raise ValueError(err_str)
 
-  if whitelist and not isinstance(whitelist, (list, tuple)):
-    raise TypeError('Whitelist should be a list or tuple.')
+  if allowlist and not isinstance(allowlist, (list, tuple)):
+    raise TypeError('allowlist should be a list or tuple.')
 
-  if blacklist and not isinstance(blacklist, (list, tuple)):
-    raise TypeError('Blacklist should be a list or tuple.')
+  if denylist and not isinstance(denylist, (list, tuple)):
+    raise TypeError('denylist should be a list or tuple.')
 
-  _validate_parameters(fn_or_cls, whitelist, 'whitelist')
-  _validate_parameters(fn_or_cls, blacklist, 'blacklist')
+  _validate_parameters(fn_or_cls, allowlist, 'allowlist')
+  _validate_parameters(fn_or_cls, denylist, 'denylist')
 
   def decorator(fn):
     """Wraps `fn` so that it obtains parameters from the configuration."""
-    return _make_gin_wrapper(fn, fn_or_cls, name, selector, whitelist,
-                             blacklist)
+    return _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist,
+                             denylist)
 
   decorated_fn_or_cls = _decorate_fn_or_cls(
       decorator, fn_or_cls, subclass=subclass)
@@ -1159,13 +1159,18 @@ def _make_configurable(fn_or_cls,
       decorated_fn_or_cls,
       name=name,
       module=module,
-      whitelist=whitelist,
-      blacklist=blacklist,
+      allowlist=allowlist,
+      denylist=denylist,
       selector=selector)
   return decorated_fn_or_cls
 
 
-def configurable(name_or_fn=None, module=None, whitelist=None, blacklist=None):
+def configurable(name_or_fn=None,
+                 module=None,
+                 allowlist=None,
+                 denylist=None,
+                 whitelist=None,
+                 blacklist=None):
   """Decorator to make a function or class configurable.
 
   This decorator registers the decorated function/class as configurable, which
@@ -1176,8 +1181,8 @@ def configurable(name_or_fn=None, module=None, whitelist=None, blacklist=None):
   naming collisions or improve clarity.
 
   If some parameters should not be configurable, they can be specified in
-  `blacklist`. If only a restricted set of parameters should be configurable,
-  they can be specified in `whitelist`.
+  `denylist`. If only a restricted set of parameters should be configurable,
+  they can be specified in `allowlist`.
 
   The decorator can be used without any parameters as follows:
 
@@ -1190,9 +1195,9 @@ def configurable(name_or_fn=None, module=None, whitelist=None, blacklist=None):
   and `param2` are configurable.
 
   The decorator can be supplied with parameters to specify the configurable name
-  or supply a whitelist/blacklist:
+  or supply an allowlist/denylist:
 
-      @config.configurable('explicit_configurable_name', whitelist='param2')
+      @config.configurable('explicit_configurable_name', allowlist='param2')
       def some_configurable_function(param1, param2='a default value'):
         ...
 
@@ -1221,12 +1226,14 @@ def configurable(name_or_fn=None, module=None, whitelist=None, blacklist=None):
     module: The module to associate with the configurable, to help handle naming
       collisions. By default, the module of the function or class being made
       configurable will be used (if no module is specified as part of the name).
-    whitelist: A whitelisted set of kwargs that should be configurable. All
-      other kwargs will not be configurable. Only one of `whitelist` or
-      `blacklist` should be specified.
-    blacklist: A blacklisted set of kwargs that should not be configurable. All
-      other kwargs will be configurable. Only one of `whitelist` or `blacklist`
+    allowlist: An allowlisted set of kwargs that should be configurable. All
+      other kwargs will not be configurable. Only one of `allowlist` or
+      `denylist` should be specified.
+    denylist: A denylisted set of kwargs that should not be configurable. All
+      other kwargs will be configurable. Only one of `allowlist` or `denylist`
       should be specified.
+    whitelist: Deprecated version of allowlist for backwards compatibility.
+    blacklist: Deprecated version of denylist for backwards compatibility.
 
   Returns:
     When used with no parameters (or with a function/class supplied as the first
@@ -1234,6 +1241,13 @@ def configurable(name_or_fn=None, module=None, whitelist=None, blacklist=None):
     parameters, it returns a function that can be applied to decorate the target
     function or class.
   """
+  if allowlist is None and whitelist:
+    logging.warning('Argument whitelist is deprecated. Please use allowlist.')
+    allowlist = whitelist
+  if denylist is None and blacklist:
+    logging.warning('Argument blacklist is deprecated. Please use denylist.')
+    denylist = blacklist
+
   decoration_target = None
   if callable(name_or_fn):
     decoration_target = name_or_fn
@@ -1242,7 +1256,7 @@ def configurable(name_or_fn=None, module=None, whitelist=None, blacklist=None):
     name = name_or_fn
 
   def perform_decoration(fn_or_cls):
-    return _make_configurable(fn_or_cls, name, module, whitelist, blacklist)
+    return _make_configurable(fn_or_cls, name, module, allowlist, denylist)
 
   if decoration_target:
     return perform_decoration(decoration_target)
@@ -1252,6 +1266,8 @@ def configurable(name_or_fn=None, module=None, whitelist=None, blacklist=None):
 def external_configurable(fn_or_cls,
                           name=None,
                           module=None,
+                          allowlist=None,
+                          denylist=None,
                           whitelist=None,
                           blacklist=None):
   """Allow referencing/configuring an external class or function.
@@ -1274,8 +1290,10 @@ def external_configurable(fn_or_cls,
     module: The module to associate with the configurable, to help handle naming
       collisions. By default, `fn_or_cls.__module__` will be used (if no module
       is specified as part of the name).
-    whitelist: A whitelist of parameter names to allow configuration for.
-    blacklist: A blacklist of parameter names not to allow configuration for.
+    allowlist: An allowlist of parameter names to allow configuration for.
+    denylist: A denylist of parameter names to deny configuration for.
+    whitelist: Deprecated version of allowlist for backwards compatibility.
+    blacklist: Deprecated version of denylist for backwards compatibility.
 
   Returns:
     A decorated version of `fn_or_cls` that permits parameter binding. For
@@ -1284,16 +1302,28 @@ def external_configurable(fn_or_cls,
     identically (even under many type inspection operations) save for the
     addition of parameter binding.
   """
+  if allowlist is None and whitelist:
+    logging.warning('Argument whitelist is deprecated. Please use allowlist.')
+    allowlist = whitelist
+  if denylist is None and blacklist:
+    logging.warning('Argument blacklist is deprecated. Please use denylist.')
+    denylist = blacklist
+
   return _make_configurable(
       fn_or_cls,
       name=name,
       module=module,
-      whitelist=whitelist,
-      blacklist=blacklist,
+      allowlist=allowlist,
+      denylist=denylist,
       subclass=True)
 
 
-def register(name_or_fn=None, module=None, whitelist=None, blacklist=None):
+def register(name_or_fn=None,
+             module=None,
+             allowlist=None,
+             denylist=None,
+             whitelist=None,
+             blacklist=None):
   """Decorator to register a function or class configurable.
 
   This decorator only registers the decorated function/class with Gin, so it can
@@ -1302,8 +1332,8 @@ def register(name_or_fn=None, module=None, whitelist=None, blacklist=None):
   calls from within Python code are not affected by the configuration.
 
   If some parameters should not be configurable, they can be specified in
-  `blacklist`. If only a restricted set of parameters should be configurable,
-  they can be specified in `whitelist`.
+  `denylist`. If only a restricted set of parameters should be configurable,
+  they can be specified in `allowlist`.
 
   The decorator can be used without any parameters as follows:
 
@@ -1316,9 +1346,9 @@ def register(name_or_fn=None, module=None, whitelist=None, blacklist=None):
   and `param2` are configurable.
 
   The decorator can be supplied with parameters to specify the name used to
-  register or supply a whitelist/blacklist:
+  register or supply an allowlist/denylist:
 
-      @config.register('explicit_name', whitelist='param2')
+      @config.register('explicit_name', allowlist='param2')
       def some_configurable_function(param1, param2='a default value'):
         ...
 
@@ -1346,12 +1376,14 @@ def register(name_or_fn=None, module=None, whitelist=None, blacklist=None):
     module: The module to associate with the configurable, to help handle naming
       collisions. By default, the module of the function or class being made
       configurable will be used (if no module is specified as part of the name).
-    whitelist: A whitelisted set of kwargs that should be configurable. All
-      other kwargs will not be configurable. Only one of `whitelist` or
-      `blacklist` should be specified.
-    blacklist: A blacklisted set of kwargs that should not be configurable. All
-      other kwargs will be configurable. Only one of `whitelist` or `blacklist`
+    allowlist: An allowlisted set of kwargs that should be configurable. All
+      other kwargs will not be configurable. Only one of `allowlist` or
+      `denylist` should be specified.
+    denylist: A denylisted set of kwargs that should not be configurable. All
+      other kwargs will be configurable. Only one of `allowlist` or `denylist`
       should be specified.
+    whitelist: Deprecated version of allowlist for backwards compatibility.
+    blacklist: Deprecated version of denylist for backwards compatibility.
 
   Returns:
     When used with no parameters as a decorator (or with a function/class
@@ -1360,6 +1392,13 @@ def register(name_or_fn=None, module=None, whitelist=None, blacklist=None):
     applied to register the target function or class with Gin (this function
     also returns the target function or class unchanged).
   """
+  if allowlist is None and whitelist:
+    logging.warning('Argument whitelist is deprecated. Please use allowlist.')
+    allowlist = whitelist
+  if denylist is None and blacklist:
+    logging.warning('Argument blacklist is deprecated. Please use denylist.')
+    denylist = blacklist
+
   decoration_target = None
   if callable(name_or_fn):
     decoration_target = name_or_fn
@@ -1373,8 +1412,8 @@ def register(name_or_fn=None, module=None, whitelist=None, blacklist=None):
         fn_or_cls,
         name=name,
         module=module,
-        whitelist=whitelist,
-        blacklist=blacklist,
+        allowlist=allowlist,
+        denylist=denylist,
         subclass=True)
     return fn_or_cls
 
@@ -1478,8 +1517,8 @@ def operative_config_str(max_line_length=80, continuation_indent=4):
   The goal of the function is to return a config that captures the full set of
   relevant configurable "hyperparameters" used by a program. As such, the
   returned configuration will include the default values of arguments from
-  configurable functions (as long as the arguments aren't blacklisted or missing
-  from a supplied whitelist), as well as any parameter values overridden via
+  configurable functions (as long as the arguments aren't denylisted or missing
+  from a supplied allowlist), as well as any parameter values overridden via
   `bind_parameter` or through `parse_config`.
 
   Any parameters that can't be represented as literals (capable of being parsed

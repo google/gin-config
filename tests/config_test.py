@@ -146,6 +146,16 @@ def configurable2(non_kwarg, kwarg1=None):
   return non_kwarg, kwarg1
 
 
+@config.configurable(allowlist=['allowlisted'])
+def allowlisted_configurable(allowlisted=None, other=None):
+  return allowlisted, other
+
+
+@config.configurable(denylist=['denylisted'])
+def denylisted_configurable(denylisted=None, other=None):
+  return denylisted, other
+
+
 @config.configurable(whitelist=['whitelisted'])
 def whitelisted_configurable(whitelisted=None, other=None):
   return whitelisted, other
@@ -634,16 +644,16 @@ class ConfigTest(absltest.TestCase):
     with self.assertRaisesRegex(ValueError, err_regexp):
       config.parse_config('ConfigurableClass.not_a_parameter = 0')
 
-    config.external_configurable(lambda arg: arg, 'lamdba1', blacklist=['arg'])
-    config.external_configurable(lambda arg: arg, 'lambda2', whitelist=['arg'])
+    config.external_configurable(lambda arg: arg, 'lamdba1', denylist=['arg'])
+    config.external_configurable(lambda arg: arg, 'lambda2', allowlist=['arg'])
 
     err_regexp = '.* not a parameter of'
     with self.assertRaisesRegex(ValueError, err_regexp):
       config.external_configurable(
-          lambda arg: arg, 'lambda3', blacklist=['nonexistent'])
+          lambda arg: arg, 'lambda3', denylist=['nonexistent'])
     with self.assertRaisesRegex(ValueError, err_regexp):
       config.external_configurable(
-          lambda arg: arg, 'lambda4', whitelist=['nonexistent'])
+          lambda arg: arg, 'lambda4', allowlist=['nonexistent'])
 
   def testMissingPositionalParameter(self):
     config.parse_config("""
@@ -1302,7 +1312,29 @@ class ConfigTest(absltest.TestCase):
     call_configurables()
     self.assertEqual(config.operative_config_str(), operative_config_str)
 
-  def testWhitelist(self):
+  def testAllowlist(self):
+    config.bind_parameter('allowlisted_configurable.allowlisted', 0)
+    self.assertEqual(allowlisted_configurable(), (0, None))
+    config.bind_parameter('scope/allowlisted_configurable.allowlisted', 1)
+    with config.config_scope('scope'):
+      self.assertEqual(allowlisted_configurable(), (1, None))
+    with self.assertRaises(ValueError):
+      config.bind_parameter('allowlisted_configurable.other', 0)
+    with self.assertRaises(ValueError):
+      config.bind_parameter('a/b/allowlisted_configurable.other', 0)
+
+  def testDenylist(self):
+    config.bind_parameter('denylisted_configurable.other', 0)
+    self.assertEqual(denylisted_configurable(), (None, 0))
+    config.bind_parameter('scope/denylisted_configurable.other', 1)
+    with config.config_scope('scope'):
+      self.assertEqual(denylisted_configurable(), (None, 1))
+    with self.assertRaises(ValueError):
+      config.bind_parameter('denylisted_configurable.denylisted', 0)
+    with self.assertRaises(ValueError):
+      config.bind_parameter('a/b/denylisted_configurable.denylisted', 0)
+
+  def testDeprecatedWhitelist(self):
     config.bind_parameter('whitelisted_configurable.whitelisted', 0)
     self.assertEqual(whitelisted_configurable(), (0, None))
     config.bind_parameter('scope/whitelisted_configurable.whitelisted', 1)
@@ -1313,7 +1345,7 @@ class ConfigTest(absltest.TestCase):
     with self.assertRaises(ValueError):
       config.bind_parameter('a/b/whitelisted_configurable.other', 0)
 
-  def testBlacklist(self):
+  def testDeprecatedBlacklist(self):
     config.bind_parameter('blacklisted_configurable.other', 0)
     self.assertEqual(blacklisted_configurable(), (None, 0))
     config.bind_parameter('scope/blacklisted_configurable.other', 1)
@@ -1412,23 +1444,23 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(positional, 'positional')
     self.assertEqual(kwarg, 'a value')
 
-  def testRequiredInSignatureBlacklistWhitelist(self):
+  def testRequiredInSignatureDenylistAllowlist(self):
     expected_err_regexp = (
-        r"Argument 'arg' of 'test_required_blacklist' \('<function .+>'\) "
-        r'marked REQUIRED but blacklisted.')
+        r"Argument 'arg' of 'test_required_denylist' \('<function .+>'\) "
+        r'marked REQUIRED but denylisted.')
     with self.assertRaisesRegex(ValueError, expected_err_regexp):
       config.external_configurable(
           lambda arg=config.REQUIRED: arg,
-          'test_required_blacklist',
-          blacklist=['arg'])
+          'test_required_denylist',
+          denylist=['arg'])
     expected_err_regexp = (
-        r"Argument 'arg' of 'test_required_whitelist' \('<function .+>'\) "
-        r'marked REQUIRED but not whitelisted.')
+        r"Argument 'arg' of 'test_required_allowlist' \('<function .+>'\) "
+        r'marked REQUIRED but not allowlisted.')
     with self.assertRaisesRegex(ValueError, expected_err_regexp):
       config.external_configurable(
           lambda arg=config.REQUIRED, arg2=4: arg,
-          'test_required_whitelist',
-          whitelist=['arg2'])
+          'test_required_allowlist',
+          allowlist=['arg2'])
 
   def testKwOnlyArgs(self):
     config_str = """
@@ -1554,7 +1586,7 @@ class ConfigTest(absltest.TestCase):
   def testScopingThreadSafety(self):
 
     # pylint: disable=unused-variable
-    @config.configurable(blacklist=['expected_value'])
+    @config.configurable(denylist=['expected_value'])
     def sanity_check(expected_value, config_value=None):
       return expected_value == config_value
 
@@ -1851,16 +1883,16 @@ class ConfigTest(absltest.TestCase):
         ConfigurableClass()
 
   def testQueryParameter(self):
-    config.bind_parameter('whitelisted_configurable.whitelisted', 0)
-    value = config.query_parameter('whitelisted_configurable.whitelisted')
+    config.bind_parameter('allowlisted_configurable.allowlisted', 0)
+    value = config.query_parameter('allowlisted_configurable.allowlisted')
     self.assertEqual(0, value)
     with self.assertRaises(ValueError):
-      config.query_parameter('whitelisted_configurable.wrong_param')
+      config.query_parameter('allowlisted_configurable.wrong_param')
     with self.assertRaises(ValueError):
-      config.query_parameter('blacklisted_configurable.blacklisted')
+      config.query_parameter('denylisted_configurable.denylisted')
     with self.assertRaises(ValueError):
       # Parameter not set.
-      config.query_parameter('whitelisted_configurable.other')
+      config.query_parameter('allowlisted_configurable.other')
     with self.assertRaisesRegex(TypeError, 'expected string*'):
       config.query_parameter(4)
 

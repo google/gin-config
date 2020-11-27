@@ -54,15 +54,15 @@ The `@gin.configurable` decorator does three things:
     caller).
 
 To determine which parameters are configurable, `@gin.configurable` takes a
-`whitelist` or a `blacklist` parameter. If some parameters are whitelisted the
-others would be blacklisted and vice versa. For instance, in the example above,
-whitelisting `num_layers` and `weight_decay` would imply that `images` and
-`num_outputs` are blacklisted. Since configuring the `images` parameter doesn't
-make much sense, it would be best to blacklist that parameter. Additionally, we
+`allowlist` or a `denylist` parameter. If some parameters are allowlisted the
+others would be denylisted and vice versa. For instance, in the example above,
+allowlisting `num_layers` and `weight_decay` would imply that `images` and
+`num_outputs` are denylisted. Since configuring the `images` parameter doesn't
+make much sense, it would be best to denylist that parameter. Additionally, we
 might want a different name for the configurable object than "my_network":
 
 ```python
-@gin.configurable('supernet', blacklist=['images'])
+@gin.configurable('supernet', denylist=['images'])
 def my_network(images, num_outputs, num_layers=3, weight_decay=1e-4):
   ...
 ```
@@ -136,7 +136,7 @@ class DNN(object):
   def __call__(inputs, num_outputs):
     ...
 
-@gin.configurable(blacklist=['data'])
+@gin.configurable(denylist=['data'])
 def train_model(network_fn, data, learning_rate, optimizer):
   ...
 ```
@@ -253,7 +253,7 @@ achieved with two optimizers, so we might have a function like:
 ```python
 gin.external_configurable(tf.train.GradientDescentOptimizer)
 
-@gin.configurable(whitelist=['generator_optimizer', 'discriminator_optimizer'])
+@gin.configurable(allowlist=['generator_optimizer', 'discriminator_optimizer'])
 def gan_trainer(
     generator_loss, generator_vars, generator_optimizer,
     discriminator_loss, discriminator_vars, discriminator_optimizer):
@@ -568,7 +568,7 @@ retrieve the operative configuration as a string parseable by
 given program execution, and contains all configurable parameter values from
 invoked configurable functions, including those functions' default argument
 values (if those arguments could be configured in accordance with the functions'
-whitelists and blacklists). It also includes `import` statements for any modules
+allowlists and denylists). It also includes `import` statements for any modules
 dynamically imported via a config file. It excludes any parameters supplied by a
 configurable function's caller, since configuring such parameters has no effect
 (the caller's value always takes precedence).
