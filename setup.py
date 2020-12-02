@@ -22,7 +22,7 @@ from os import path
 from setuptools import find_packages
 from setuptools import setup
 
-_VERSION = '0.4.0'
+_VERSION = '0.4.1'
 
 here = path.abspath(path.dirname(__file__))
 
