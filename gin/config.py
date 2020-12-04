@@ -93,7 +93,7 @@ import pprint
 import sys
 import threading
 import traceback
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 from gin import config_parser
 from gin import selector_map
@@ -1732,7 +1732,7 @@ def add_config_file_search_path(location_prefix):
 
 def parse_config_file(
     config_file: str,
-    skip_unknown: bool = False,
+    skip_unknown: Union[bool, Sequence[str]] = False,
     print_includes_and_imports: bool = False
 ) -> ParsedConfigFileIncludesAndImports:
   """Parse a Gin config file.
@@ -1771,11 +1771,12 @@ def parse_config_file(
   raise IOError(err_str.format(config_file, prefixes))
 
 
-def parse_config_files_and_bindings(config_files: Optional[Sequence[str]],
-                                    bindings: Optional[Sequence[str]],
-                                    finalize_config: bool = True,
-                                    skip_unknown: bool = False,
-                                    print_includes_and_imports: bool = False):
+def parse_config_files_and_bindings(
+    config_files: Optional[Sequence[str]],
+    bindings: Optional[Sequence[str]],
+    finalize_config: bool = True,
+    skip_unknown: Union[bool, Sequence[str]] = False,
+    print_includes_and_imports: bool = False):
   """Parse a list of config files followed by extra Gin bindings.
 
   This function is equivalent to:
