@@ -310,6 +310,20 @@ configurable_external_class = config.external_configurable(
 config.external_configurable(ExternalClass, 'module.ExternalConfigurable2')
 
 
+@config.configurable
+class ConfigurableExternalSubclass(configurable_external_class):
+  """Subclassing an external configurable object.
+
+  This is a configurable subclass (of the configurable subclass implicitly
+  created by external_configurable) of the ExternalClass class.
+  """
+
+  def __init__(self, kwarg1=None, kwarg2=None, kwarg3=None):
+    super(ConfigurableExternalSubclass, self).__init__(
+        kwarg1=kwarg1, kwarg2=kwarg2)
+    self.kwarg3 = kwarg3
+
+
 class AbstractConfigurable(metaclass=abc.ABCMeta):
 
   def __init__(self, kwarg1=None):
@@ -682,9 +696,7 @@ class ConfigTest(absltest.TestCase):
     # subclasses of the original class are not subclasses of the reference.
     self.assertFalse(issubclass(sub_cls_ref, super_cls_ref))
     self.assertNotIsInstance(sub_instance, super_cls_ref)
-    # But due to the fact that Gin's dynamic metaclass creates instances of the
-    # actual class (not the Gin subclass), instance checks work.
-    self.assertIsInstance(sub_instance, type(super_instance))
+    self.assertNotIsInstance(sub_instance, type(super_instance))
 
     self.assertEqual(super_instance.kwarg1, 'one')
     self.assertIsNone(super_instance.kwarg2)
@@ -758,22 +770,33 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(scope2_instance.kwarg1, 'scope2arg1')
     self.assertEqual(scope2_instance.kwarg2, 'scope2arg2')
 
-  def testImplicitlyScopedExternalConfigurable(self):
+  def testImplicitlyScopedExternalConfigurableAndSubclass(self):
     config_str = """
       configurable2.non_kwarg = @scope1/ExternalConfigurable
+      configurable2.kwarg1 = @scope2/ConfigurableExternalSubclass
       scope1/ExternalConfigurable.kwarg1 = 'one'
+      scope2/ConfigurableExternalSubclass.kwarg2 = 'two'
+      scope2/ConfigurableExternalSubclass.kwarg3 = 'three'
     """
     config.parse_config(config_str)
     # pylint: disable=no-value-for-parameter
-    cls, _ = configurable2()
+    super_cls, sub_cls = configurable2()
     # pylint: enable=no-value-for-parameter
-    self.assertTrue(issubclass(cls, ExternalClass))
+    self.assertTrue(issubclass(super_cls, ExternalClass))
+    self.assertTrue(issubclass(sub_cls, ExternalClass))
+    self.assertTrue(issubclass(sub_cls, ConfigurableExternalSubclass))
 
-    instance = cls()
-    self.assertIsInstance(instance, ExternalClass)
+    super_instance, sub_instance = super_cls(), sub_cls()
+    self.assertIsInstance(super_instance, ExternalClass)
+    self.assertIsInstance(sub_instance, ConfigurableExternalSubclass)
+    self.assertIsInstance(sub_instance, ExternalClass)
 
-    self.assertEqual(instance.kwarg1, 'one')
-    self.assertIsNone(instance.kwarg2)
+    self.assertEqual(super_instance.kwarg1, 'one')
+    self.assertIsNone(super_instance.kwarg2)
+
+    self.assertIsNone(sub_instance.kwarg1)
+    self.assertEqual(sub_instance.kwarg2, 'two')
+    self.assertEqual(sub_instance.kwarg3, 'three')
 
   def testAbstractConfigurableSubclass(self):
     config_str = """
