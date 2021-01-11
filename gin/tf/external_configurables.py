@@ -42,7 +42,7 @@ def piecewise_constant(global_step, *args, **kwargs):
   return tf.compat.v1.train.piecewise_constant(global_step, *args, **kwargs)
 
 
-# Losses.
+# v1 Losses.
 
 config.external_configurable(
     tf.compat.v1.losses.absolute_difference, module='tf.losses')
@@ -61,6 +61,50 @@ config.external_configurable(
     tf.compat.v1.losses.softmax_cross_entropy, module='tf.losses')
 config.external_configurable(
     tf.compat.v1.losses.sparse_softmax_cross_entropy, module='tf.losses')
+
+# v2 Losses.
+
+config.external_configurable(
+    tf.keras.losses.BinaryCrossentropy, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.CategoricalCrossentropy, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.CategoricalHinge, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.CosineSimilarity, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.Hinge, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.Huber, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.KLDivergence, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.LogCosh, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.MeanAbsoluteError, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.MeanAbsolutePercentageError, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.MeanSquaredError, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.MeanSquaredLogarithmicError, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.Poisson, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.SparseCategoricalCrossentropy, module='tf.keras.losses')
+config.external_configurable(
+    tf.keras.losses.SquaredHinge, module='tf.keras.losses')
+# The Reduction constants are only available in TF2; explicitly grab the v2
+# endpoints to avoid loading failures in v1 pipelines.
+config.constant('tf.keras.losses.Reduction.AUTO',
+                tf.compat.v2.keras.losses.Reduction.AUTO)
+config.constant('tf.keras.losses.Reduction.NONE',
+                tf.compat.v2.keras.losses.Reduction.NONE)
+config.constant('tf.keras.losses.Reduction.SUM',
+                tf.compat.v2.keras.losses.Reduction.SUM)
+config.constant('tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE',
+                tf.compat.v2.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
+
 
 # Maths.
 

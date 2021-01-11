@@ -97,6 +97,24 @@ class TFConfigTest(tf.test.TestCase):
       # pylint: enable=no-value-for-parameter
       self.assertIsInstance(configed_optimizer, optimizer)
 
+  def testLosses(self):
+    # Spot check a few.
+    config_str = """
+      # Test without tf prefix, but using the prefix is strongly recommended!
+      configurable.bin_ce = @keras.losses.BinaryCrossentropy()
+      # Test with tf prefix.
+      configurable.hinge = @tf.keras.losses.Hinge()
+      configurable.mae = @tf.keras.losses.MeanAbsoluteError()
+      tf.keras.losses.MeanAbsoluteError.reduction = %tf.keras.losses.Reduction.NONE
+    """
+    config.parse_config(config_str)
+
+    vals = configurable()
+    self.assertIsInstance(vals['bin_ce'], tf.keras.losses.BinaryCrossentropy)
+    self.assertIsInstance(vals['hinge'], tf.keras.losses.Hinge)
+    self.assertIsInstance(vals['mae'], tf.keras.losses.MeanAbsoluteError)
+    self.assertEqual(vals['mae'].reduction, tf.keras.losses.Reduction.NONE)
+
   def testDtypes(self):
     # Spot check a few.
     config_str = """
@@ -112,7 +130,6 @@ class TFConfigTest(tf.test.TestCase):
     self.assertIs(vals['float32'], tf.float32)
     self.assertIs(vals['string'], tf.string)
     self.assertIs(vals['qint8'], tf.qint8)
-
 
 if __name__ == '__main__':
   tf.test.main()
