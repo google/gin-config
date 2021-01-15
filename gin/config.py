@@ -762,7 +762,7 @@ def _get_kwarg_defaults(fn):
 
 
 def _get_validated_required_kwargs(fn, fn_descriptor, allowlist, denylist):
-  """Gets required argument names, and validates against white/denylist."""
+  """Gets required argument names, and validates against allow/denylist."""
   kwarg_defaults = _get_kwarg_defaults(fn)
 
   required_kwargs = []
