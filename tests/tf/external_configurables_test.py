@@ -41,28 +41,6 @@ class TFConfigTest(tf.test.TestCase):
     config.clear_config()
     super(TFConfigTest, self).tearDown()
 
-  def testConfigureOptimizerAndLearningRate(self):
-    config_str = """
-      fake_train_model.learning_rate = @piecewise_constant
-      piecewise_constant.boundaries = [200000]
-      piecewise_constant.values = [0.01, 0.001]
-
-      fake_train_model.optimizer = @MomentumOptimizer
-      MomentumOptimizer.momentum = 0.95
-    """
-    config.parse_config(config_str)
-
-    lr, opt = fake_train_model()  # pylint: disable=no-value-for-parameter
-
-    self.assertIsInstance(opt, tf.compat.v1.train.MomentumOptimizer)
-    self.assertAlmostEqual(opt._momentum, 0.95)
-
-    global_step = tf.compat.v1.train.get_or_create_global_step()
-    self.evaluate(tf.compat.v1.global_variables_initializer())
-    self.assertAlmostEqual(self.evaluate(lr), 0.01)
-    self.evaluate(global_step.assign(300000))
-    self.assertAlmostEqual(self.evaluate(lr), 0.001)
-
   def testOptimizersWithDefaults(self):
     optimizers = [
         tf.compat.v1.train.GradientDescentOptimizer,
