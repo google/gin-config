@@ -1163,9 +1163,7 @@ def _make_configurable(fn_or_cls,
 def configurable(name_or_fn=None,
                  module=None,
                  allowlist=None,
-                 denylist=None,
-                 whitelist=None,
-                 blacklist=None):
+                 denylist=None):
   """Decorator to make a function or class configurable.
 
   This decorator registers the decorated function/class as configurable, which
@@ -1227,8 +1225,6 @@ def configurable(name_or_fn=None,
     denylist: A denylisted set of kwargs that should not be configurable. All
       other kwargs will be configurable. Only one of `allowlist` or `denylist`
       should be specified.
-    whitelist: Deprecated version of allowlist for backwards compatibility.
-    blacklist: Deprecated version of denylist for backwards compatibility.
 
   Returns:
     When used with no parameters (or with a function/class supplied as the first
@@ -1236,13 +1232,6 @@ def configurable(name_or_fn=None,
     parameters, it returns a function that can be applied to decorate the target
     function or class.
   """
-  if allowlist is None and whitelist:
-    logging.warning('Argument whitelist is deprecated. Please use allowlist.')
-    allowlist = whitelist
-  if denylist is None and blacklist:
-    logging.warning('Argument blacklist is deprecated. Please use denylist.')
-    denylist = blacklist
-
   decoration_target = None
   if callable(name_or_fn):
     decoration_target = name_or_fn
@@ -1262,9 +1251,7 @@ def external_configurable(fn_or_cls,
                           name=None,
                           module=None,
                           allowlist=None,
-                          denylist=None,
-                          whitelist=None,
-                          blacklist=None):
+                          denylist=None):
   """Allow referencing/configuring an external class or function.
 
   This alerts Gin to the existence of the class or function `fn_or_cls` in the
@@ -1287,8 +1274,6 @@ def external_configurable(fn_or_cls,
       is specified as part of the name).
     allowlist: An allowlist of parameter names to allow configuration for.
     denylist: A denylist of parameter names to deny configuration for.
-    whitelist: Deprecated version of allowlist for backwards compatibility.
-    blacklist: Deprecated version of denylist for backwards compatibility.
 
   Returns:
     A decorated version of `fn_or_cls` that permits parameter binding. For
@@ -1297,13 +1282,6 @@ def external_configurable(fn_or_cls,
     identically (even under many type inspection operations) save for the
     addition of parameter binding.
   """
-  if allowlist is None and whitelist:
-    logging.warning('Argument whitelist is deprecated. Please use allowlist.')
-    allowlist = whitelist
-  if denylist is None and blacklist:
-    logging.warning('Argument blacklist is deprecated. Please use denylist.')
-    denylist = blacklist
-
   return _make_configurable(
       fn_or_cls,
       name=name,
@@ -1316,9 +1294,7 @@ def external_configurable(fn_or_cls,
 def register(name_or_fn=None,
              module=None,
              allowlist=None,
-             denylist=None,
-             whitelist=None,
-             blacklist=None):
+             denylist=None):
   """Decorator to register a function or class configurable.
 
   This decorator only registers the decorated function/class with Gin, so it can
@@ -1377,8 +1353,6 @@ def register(name_or_fn=None,
     denylist: A denylisted set of kwargs that should not be configurable. All
       other kwargs will be configurable. Only one of `allowlist` or `denylist`
       should be specified.
-    whitelist: Deprecated version of allowlist for backwards compatibility.
-    blacklist: Deprecated version of denylist for backwards compatibility.
 
   Returns:
     When used with no parameters as a decorator (or with a function/class
@@ -1387,13 +1361,6 @@ def register(name_or_fn=None,
     applied to register the target function or class with Gin (this function
     also returns the target function or class unchanged).
   """
-  if allowlist is None and whitelist:
-    logging.warning('Argument whitelist is deprecated. Please use allowlist.')
-    allowlist = whitelist
-  if denylist is None and blacklist:
-    logging.warning('Argument blacklist is deprecated. Please use denylist.')
-    denylist = blacklist
-
   decoration_target = None
   if callable(name_or_fn):
     decoration_target = name_or_fn
