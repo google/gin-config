@@ -1236,12 +1236,10 @@ def configurable(name_or_fn=None,
     parameters, it returns a function that can be applied to decorate the target
     function or class.
   """
-  if allowlist is None and whitelist:
-    logging.warning('Argument whitelist is deprecated. Please use allowlist.')
-    allowlist = whitelist
-  if denylist is None and blacklist:
-    logging.warning('Argument blacklist is deprecated. Please use denylist.')
-    denylist = blacklist
+  if whitelist is not None:
+    raise ValueError('Argument whitelist is deprecated. Please use allowlist.')
+  if blacklist is not None:
+    raise ValueError('Argument blacklist is deprecated. Please use denylist.')
 
   decoration_target = None
   if callable(name_or_fn):
@@ -1297,12 +1295,10 @@ def external_configurable(fn_or_cls,
     identically (even under many type inspection operations) save for the
     addition of parameter binding.
   """
-  if allowlist is None and whitelist:
-    logging.warning('Argument whitelist is deprecated. Please use allowlist.')
-    allowlist = whitelist
-  if denylist is None and blacklist:
-    logging.warning('Argument blacklist is deprecated. Please use denylist.')
-    denylist = blacklist
+  if whitelist is not None:
+    raise ValueError('Argument whitelist is deprecated. Please use allowlist.')
+  if blacklist is not None:
+    raise ValueError('Argument blacklist is deprecated. Please use denylist.')
 
   return _make_configurable(
       fn_or_cls,
@@ -1387,12 +1383,10 @@ def register(name_or_fn=None,
     applied to register the target function or class with Gin (this function
     also returns the target function or class unchanged).
   """
-  if allowlist is None and whitelist:
-    logging.warning('Argument whitelist is deprecated. Please use allowlist.')
-    allowlist = whitelist
-  if denylist is None and blacklist:
-    logging.warning('Argument blacklist is deprecated. Please use denylist.')
-    denylist = blacklist
+  if whitelist is not None:
+    raise ValueError('Argument whitelist is deprecated. Please use allowlist.')
+  if blacklist is not None:
+    raise ValueError('Argument blacklist is deprecated. Please use denylist.')
 
   decoration_target = None
   if callable(name_or_fn):
