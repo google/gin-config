@@ -155,16 +155,6 @@ def denylisted_configurable(denylisted=None, other=None):
   return denylisted, other
 
 
-@config.configurable(whitelist=['whitelisted'])
-def whitelisted_configurable(whitelisted=None, other=None):
-  return whitelisted, other
-
-
-@config.configurable(blacklist=['blacklisted'])
-def blacklisted_configurable(blacklisted=None, other=None):
-  return blacklisted, other
-
-
 @config.configurable
 def required_args(arg1, arg2, arg3, kwarg1=4, kwarg2=5, kwarg3=6):
   return arg1, arg2, arg3, kwarg1, kwarg2, kwarg3
@@ -1076,28 +1066,6 @@ class ConfigTest(absltest.TestCase):
       config.bind_parameter('denylisted_configurable.denylisted', 0)
     with self.assertRaises(ValueError):
       config.bind_parameter('a/b/denylisted_configurable.denylisted', 0)
-
-  def testDeprecatedWhitelist(self):
-    config.bind_parameter('whitelisted_configurable.whitelisted', 0)
-    self.assertEqual(whitelisted_configurable(), (0, None))
-    config.bind_parameter('scope/whitelisted_configurable.whitelisted', 1)
-    with config.config_scope('scope'):
-      self.assertEqual(whitelisted_configurable(), (1, None))
-    with self.assertRaises(ValueError):
-      config.bind_parameter('whitelisted_configurable.other', 0)
-    with self.assertRaises(ValueError):
-      config.bind_parameter('a/b/whitelisted_configurable.other', 0)
-
-  def testDeprecatedBlacklist(self):
-    config.bind_parameter('blacklisted_configurable.other', 0)
-    self.assertEqual(blacklisted_configurable(), (None, 0))
-    config.bind_parameter('scope/blacklisted_configurable.other', 1)
-    with config.config_scope('scope'):
-      self.assertEqual(blacklisted_configurable(), (None, 1))
-    with self.assertRaises(ValueError):
-      config.bind_parameter('blacklisted_configurable.blacklisted', 0)
-    with self.assertRaises(ValueError):
-      config.bind_parameter('a/b/blacklisted_configurable.blacklisted', 0)
 
   def testRequiredArgs(self):
     with self.assertRaisesRegex(RuntimeError, 'arg1.*arg2'):
