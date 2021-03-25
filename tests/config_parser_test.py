@@ -17,6 +17,8 @@ import ast
 import collections
 import pprint
 import random
+import typing
+from typing import Any, Dict, Sequence, Tuple
 
 from absl.testing import absltest
 
@@ -93,6 +95,13 @@ class _TestParserDelegate(config_parser.ParserDelegate):
     return _TestMacro(scoped_name)
 
 
+class _ParsedConfig(typing.NamedTuple):
+  config: Dict[Tuple[str, str], Dict[str, Any]]
+  imports: Sequence[str]
+  includes: Sequence[str]
+  registrations: Sequence[config_parser.RegistrationBlock]
+
+
 class ConfigParserTest(absltest.TestCase):
 
   def _parse_value(self, literal):
@@ -109,7 +118,6 @@ class ConfigParserTest(absltest.TestCase):
 
   def _parse_config(self,
                     config_str,
-                    only_bindings=True,
                     generate_unknown_reference_errors=False):
     parser = config_parser.ConfigParser(
         config_str, _TestParserDelegate(generate_unknown_reference_errors))
@@ -117,6 +125,7 @@ class ConfigParserTest(absltest.TestCase):
     config = {}
     imports = []
     includes = []
+    registrations = []
     for statement in parser:
       if isinstance(statement, config_parser.BindingStatement):
         scope, selector, arg_name, value, _ = statement
@@ -125,10 +134,14 @@ class ConfigParserTest(absltest.TestCase):
         imports.append(statement.module)
       elif isinstance(statement, config_parser.IncludeStatement):
         includes.append(statement.filename)
+      elif isinstance(statement, config_parser.RegistrationBlock):
+        registrations.append(statement)
 
-    if only_bindings:
-      return config
-    return config, imports, includes
+    return _ParsedConfig(
+        config=config,
+        imports=imports,
+        includes=includes,
+        registrations=registrations)
 
   def testParseRandomLiterals(self):
     # Try a bunch of random nested Python structures and make sure we can parse
@@ -316,7 +329,7 @@ class ConfigParserTest(absltest.TestCase):
       scope/name = %macro
       scope/fn.param = %a.b  # Periods in macros are OK (e.g. for constants).
       a/scope/fn.param = 4
-    """)
+    """).config
     self.assertEqual(config['', 'a'], {'': 0})
     self.assertEqual(config['', 'a1.B2'], {'c': 1})
     self.assertEqual(config['scope', 'name'], {'': _TestMacro('macro')})
@@ -343,7 +356,7 @@ class ConfigParserTest(absltest.TestCase):
       import some.module.name  # Comment afterwards ok.
       import another.module.name
     """
-    _, imports, _ = self._parse_config(config_str, only_bindings=False)
+    imports = self._parse_config(config_str).imports
     self.assertEqual(imports, ['some.module.name', 'another.module.name'])
 
     with self.assertRaises(SyntaxError):
@@ -356,7 +369,7 @@ class ConfigParserTest(absltest.TestCase):
       include 'a/file/path.gin'
       include "another/" "path.gin"
     """
-    _, _, includes = self._parse_config(config_str, only_bindings=False)
+    includes = self._parse_config(config_str).includes
     self.assertEqual(includes, ['a/file/path.gin', 'another/path.gin'])
 
     with self.assertRaises(SyntaxError):
@@ -365,6 +378,43 @@ class ConfigParserTest(absltest.TestCase):
       self._parse_config('include None')
     with self.assertRaises(SyntaxError):
       self._parse_config('include 123')
+
+  def testParseRegistrations(self):
+    config_str = """
+      register from some.module.name:
+        SomeClass
+        some_function
+
+        AnotherClass  # Commence comments...
+
+      # More comments!
+
+      register from some.other.maybe.really.long.and.unwieldy_module_name \
+          as module.alias:  # Comment comment.
+        function  # Comment here too!
+        Class
+    """
+    registration_blocks = self._parse_config(config_str).registrations
+    self.assertLen(registration_blocks, 2)
+
+    registration_block = registration_blocks[0]
+    self.assertEqual(registration_block.module, 'some.module.name')
+    self.assertIsNone(registration_block.module_alias)
+    registration_names = [
+        registration.name for registration in registration_block.registrations
+    ]
+    expected = ['SomeClass', 'some_function', 'AnotherClass']
+    self.assertEqual(registration_names, expected)
+
+    registration_block = registration_blocks[1]
+    self.assertEqual(registration_block.module,
+                     'some.other.maybe.really.long.and.unwieldy_module_name')
+    self.assertEqual(registration_block.module_alias, 'module.alias')
+    registration_names = [
+        registration.name for registration in registration_block.registrations
+    ]
+    expected = ['function', 'Class']
+    self.assertEqual(registration_names, expected)
 
   def testParseConfig(self):
     config_str = r"""
@@ -391,8 +441,7 @@ class ConfigParserTest(absltest.TestCase):
 
       # And at the end!
     """
-    config, imports, includes = self._parse_config(
-        config_str, only_bindings=False)
+    parsed_config = self._parse_config(config_str)
 
     expected_config = {
         ('a/b/c', 'd'): {
@@ -405,16 +454,16 @@ class ConfigParserTest(absltest.TestCase):
             'goodness': ['a', 'moose']
         }
     }
-    self.assertEqual(config, expected_config)
+    self.assertEqual(parsed_config.config, expected_config)
 
     expected_imports = [
         'some.module.with.configurables', 'another.module.providing.configs',
         'module'
     ]
-    self.assertEqual(imports, expected_imports)
+    self.assertEqual(parsed_config.imports, expected_imports)
 
     expected_includes = ['another/gin/file.gin', 'path/to/config/file.gin']
-    self.assertEqual(includes, expected_includes)
+    self.assertEqual(parsed_config.includes, expected_includes)
 
 
 if __name__ == '__main__':
