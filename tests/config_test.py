@@ -686,7 +686,9 @@ class ConfigTest(absltest.TestCase):
     # subclasses of the original class are not subclasses of the reference.
     self.assertFalse(issubclass(sub_cls_ref, super_cls_ref))
     self.assertNotIsInstance(sub_instance, super_cls_ref)
-    self.assertNotIsInstance(sub_instance, type(super_instance))
+    # But due to the fact that Gin's dynamic metaclass creates instances of the
+    # actual class (not the Gin subclass), instance checks work.
+    self.assertIsInstance(sub_instance, type(super_instance))
 
     self.assertEqual(super_instance.kwarg1, 'one')
     self.assertIsNone(super_instance.kwarg2)

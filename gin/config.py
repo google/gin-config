@@ -191,7 +191,7 @@ REQUIRED = object()
 
 def _find_class_construction_fn(cls):
   """Find the first __init__ or __new__ method in the given class's MRO."""
-  for base in type.mro(cls):  # pytype: disable=wrong-arg-types
+  for base in cls.mro():  # pytype: disable=attribute-error
     if '__init__' in base.__dict__:
       return base.__init__
     if '__new__' in base.__dict__:
@@ -216,54 +216,119 @@ def _ensure_wrappability(fn):
   return fn
 
 
-def _decorate_fn_or_cls(decorator, fn_or_cls, subclass=False):
+def _make_meta_call_wrapper(cls):
+  """Creates a pickle-compatible wrapper for `type(cls).__call__`.
+
+  This function works in tandem with `_decorate_fn_or_cls` below. It wraps
+  `type(cls).__call__`, which is in general responsible for creating a new
+  instance of `cls` or one of its subclasses. In cases where the to-be-created
+  class is Gin's dynamically-subclassed version of `cls`, the wrapper here
+  instead returns an instance of `cls`, which isn't a dynamic subclass and more
+  generally doesn't have any Gin-related magic applied. This means the instance
+  is compatible with pickling, and is totally transparent to any inspections by
+  user code (since it really is an instance of the original type).
+
+  Args:
+    cls: The class whose metaclass's call method should be wrapped.
+
+  Returns:
+    A wrapped version of the `type(cls).__call__`.
+  """
+  cls_meta = type(cls)
+
+  @functools.wraps(cls_meta.__call__)
+  def meta_call_wrapper(new_cls, *args, **kwargs):
+    # If `new_cls` (the to-be-created class) is a direct subclass of `cls`, we
+    # can be sure that it's Gin's dynamically created subclass. In this case,
+    # we directly create an instance of `cls` instead. Otherwise, some further
+    # dynamic subclassing by user code has likely occurred, and we just create
+    # an instance of `new_cls` to avoid issues. This instance is likely not
+    # compatible with pickle, but that's generally true of dynamically created
+    # subclasses and would require some user workaround with or without Gin.
+    if new_cls.__bases__ == (cls,):
+      new_cls = cls
+    return cls_meta.__call__(new_cls, *args, **kwargs)
+
+  return meta_call_wrapper
+
+
+def _decorate_fn_or_cls(decorator, fn_or_cls, avoid_class_mutation=False):
   """Decorate a function or class with the given decorator.
 
   When `fn_or_cls` is a function, applies `decorator` to the function and
   returns the (decorated) result.
 
-  When `fn_or_cls` is a class and the `subclass` parameter is `False`, this will
-  replace `fn_or_cls.__init__` with the result of applying `decorator` to it.
+  When `fn_or_cls` is a class and the `avoid_class_mutation` parameter is
+  `False`, this will replace either `fn_or_cls.__init__` or `fn_or_cls.__new__`
+  (whichever is first implemented in the class's MRO, with a preference for
+  `__init__`) with the result of applying `decorator` to it.
 
-  When `fn_or_cls` is a class and `subclass` is `True`, this will subclass the
-  class, but with `__init__` defined to be the result of applying `decorator` to
-  `fn_or_cls.__init__`. The decorated class has metadata (docstring, name, and
-  module information) copied over from `fn_or_cls`. The goal is to provide a
-  decorated class the behaves as much like the original as possible, without
-  modifying it (for example, inspection operations using `isinstance` or
-  `issubclass` should behave the same way as on the original class).
+  When `fn_or_cls` is a class and `avoid_class_mutation` is `True`, this will
+  dynamically construct a subclass of `fn_or_cls` using a dynamically
+  constructed metaclass (which itself is a subclass of `fn_or_cls`'s metaclass).
+  The metaclass's `__call__` method is wrapped using `decorator` to
+  intercept/inject parameters for class construction. The resulting subclass has
+  metadata (docstring, name, and module information) copied over from
+  `fn_or_cls`, and should behave like the original as much possible, without
+  modifying it (for example, inspection operations using `issubclass` should
+  behave the same way as on the original class). When constructed, an instance
+  of the original (undecorated) class is returned.
 
   Args:
     decorator: The decorator to use.
     fn_or_cls: The function or class to decorate.
-    subclass: Whether to decorate classes by subclassing. This argument is
-      ignored if `fn_or_cls` is not a class.
+    avoid_class_mutation: Whether to avoid class mutation using dynamic
+      subclassing. This argument is ignored if `fn_or_cls` is not a class.
 
   Returns:
     The decorated function or class.
   """
   if not inspect.isclass(fn_or_cls):  # pytype: disable=wrong-arg-types
     return decorator(_ensure_wrappability(fn_or_cls))
-
-  construction_fn = _find_class_construction_fn(fn_or_cls)
-
-  if subclass:
-
-    class DecoratedClass(fn_or_cls):
-      __doc__ = fn_or_cls.__doc__
-      __module__ = fn_or_cls.__module__
-
-    DecoratedClass.__name__ = fn_or_cls.__name__
-    DecoratedClass.__qualname__ = fn_or_cls.__qualname__
-    cls = DecoratedClass
+  cls = fn_or_cls
+  if avoid_class_mutation:
+    # This approach enables @gin.register and gin.external_configurable(), and
+    # is in most cases compatible with pickling instances. The basic strategy
+    # here is to create a new metaclass (subclassing the class's metaclass to
+    # preserve behavior), wrapping its __call__ method to return an instance of
+    # the *original* (undecorated) class. Gin's wrapper is then applied to this
+    # decorated __call__ method to ensure any configured parameters are passed
+    # through to `__init__` or `__new__` appropriately. We can't use it for
+    # @gin.configurable because the decorated class returned below can interact
+    # poorly with `super(type, obj)` if `type` references the decorated version
+    # while `obj` is an instance of the original undecorated class.
+    meta_call = _make_meta_call_wrapper(cls)  # See this for additional details.
+    # We decorate our wrapped metaclass __call__ with Gin's wrapper.
+    decorated_call = decorator(_ensure_wrappability(meta_call))
+    # And now construct a new metaclass, subclassing the one from `cls`,
+    # supplying our decorated `__call__`. Most often this is just subclassing
+    # Python's `type`, but when `cls` has a custom metaclass set, this ensures
+    # that it will continue to work properly.
+    cls_meta = type(cls)  # The metaclass of the given class.
+    decorating_meta = type(cls_meta)(cls_meta.__name__, (cls_meta,), {
+        '__call__': decorated_call,
+    })
+    # Now we construct our class. This is a subclass of `cls`, but only with
+    # wrapper-related overrides, since injecting/intercepting parameters is all
+    # handled in the metaclass's `__call__` method. Note that we let
+    # '__annotations__' simply get forwarded to the base class, since creating
+    # a new type doesn't set this attribute by default.
+    overrides = {
+        attr: getattr(cls, attr)
+        for attr in ('__module__', '__name__', '__qualname__', '__doc__')
+    }
+    decorated_class = decorating_meta(cls.__name__, (cls,), overrides)
   else:
-    cls = fn_or_cls
-
-  decorated_fn = decorator(_ensure_wrappability(construction_fn))
-  if construction_fn.__name__ == '__new__':
-    decorated_fn = staticmethod(decorated_fn)
-  setattr(cls, construction_fn.__name__, decorated_fn)
-  return cls
+    # Here, we just decorate `__init__` or `__new__` directly, and mutate the
+    # original class definition to use the decorated version. This is simpler
+    # and permits reliable subclassing of @gin.configurable decorated classes.
+    decorated_class = cls
+    construction_fn = _find_class_construction_fn(decorated_class)
+    decorated_fn = decorator(_ensure_wrappability(construction_fn))
+    if construction_fn.__name__ == '__new__':
+      decorated_fn = staticmethod(decorated_fn)
+    setattr(decorated_class, construction_fn.__name__, decorated_fn)
+  return decorated_class
 
 
 class Configurable(
@@ -918,7 +983,8 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
     fn: The function that will be wrapped.
     fn_or_cls: The original function or class being made configurable. This will
       differ from `fn` when making a class configurable, in which case `fn` will
-      be the constructor/new function, while `fn_or_cls` will be the class.
+      be the constructor/new function (or when proxying a class, the type's
+      `__call__` method), while `fn_or_cls` will be the class.
     name: The name given to the configurable.
     selector: The full selector of the configurable (name including any module
       components).
@@ -931,10 +997,13 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
   # At this point we have access to the final function to be wrapped, so we
   # can cache a few things here.
   fn_descriptor = "'{}' ('{}')".format(name, fn_or_cls)
+  signature_fn = fn_or_cls
+  if inspect.isclass(fn_or_cls):
+    signature_fn = _find_class_construction_fn(fn_or_cls)
   signature_required_kwargs = _get_validated_required_kwargs(
-      fn, fn_descriptor, allowlist, denylist)
+      signature_fn, fn_descriptor, allowlist, denylist)
   initial_configurable_defaults = _get_default_configurable_parameter_values(
-      fn, allowlist, denylist)
+      signature_fn, allowlist, denylist)
 
   @functools.wraps(fn)
   def gin_wrapper(*args, **kwargs):
@@ -947,7 +1016,7 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
     gin_bound_args = list(new_kwargs.keys())
     scope_str = partial_scope_str
 
-    arg_names = _get_supplied_positional_parameter_names(fn, args)
+    arg_names = _get_supplied_positional_parameter_names(signature_fn, args)
 
     for arg in args[len(arg_names):]:
       if arg is REQUIRED:
@@ -1032,7 +1101,7 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
 
     if missing_required_params:
       missing_required_params = (
-          _order_by_signature(fn, missing_required_params))
+          _order_by_signature(signature_fn, missing_required_params))
       err_str = 'Required bindings for `{}` not provided in config: {}'
       minimal_selector = _REGISTRY.minimal_selector(selector)
       err_str = err_str.format(minimal_selector, missing_required_params)
@@ -1047,7 +1116,7 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
     except Exception as e:  # pylint: disable=broad-except
       err_str = ''
       if isinstance(e, TypeError):
-        all_arg_names = _get_all_positional_parameter_names(fn)
+        all_arg_names = _get_all_positional_parameter_names(signature_fn)
         if len(new_args) < len(all_arg_names):
           unbound_positional_args = list(
               set(all_arg_names[len(new_args):]) - set(new_kwargs))
@@ -1076,7 +1145,7 @@ def _make_configurable(fn_or_cls,
                        module=None,
                        allowlist=None,
                        denylist=None,
-                       subclass=False):
+                       avoid_class_mutation=False):
   """Wraps `fn_or_cls` to make it configurable.
 
   Infers the configurable name from `fn_or_cls.__name__` if necessary, and
@@ -1094,9 +1163,10 @@ def _make_configurable(fn_or_cls,
       is specified as part of `name`).
     allowlist: An allowlisted set of parameter names to supply values for.
     denylist: A denylisted set of parameter names not to supply values for.
-    subclass: If `fn_or_cls` is a class and `subclass` is `True`, decorate by
-      subclassing `fn_or_cls` and overriding its `__init__` method. If `False`,
-      replace the existing `__init__` with a decorated version.
+    avoid_class_mutation: If `fn_or_cls` is a class and `avoid_class_mutation`
+      is `True`, decorate by subclassing `fn_or_cls`'s metaclass and overriding
+      its `__call__` method. If `False`, replace the existing `__init__` or
+      `__new__` with a decorated version.
 
   Returns:
     A wrapped version of `fn_or_cls` that will take parameter values from the
@@ -1148,7 +1218,7 @@ def _make_configurable(fn_or_cls,
                              denylist)
 
   decorated_fn_or_cls = _decorate_fn_or_cls(
-      decorator, fn_or_cls, subclass=subclass)
+      decorator, fn_or_cls, avoid_class_mutation=avoid_class_mutation)
 
   _REGISTRY[selector] = Configurable(
       decorated_fn_or_cls,
@@ -1306,7 +1376,7 @@ def external_configurable(fn_or_cls,
       module=module,
       allowlist=allowlist,
       denylist=denylist,
-      subclass=True)
+      avoid_class_mutation=True)
 
 
 def register(name_or_fn=None,
@@ -1396,14 +1466,14 @@ def register(name_or_fn=None,
     name = name_or_fn
 
   def perform_decoration(fn_or_cls):
-    # Register it as configurable but return the orinal fn_or_cls.
+    # Register it as configurable but return the original fn_or_cls.
     _make_configurable(
         fn_or_cls,
         name=name,
         module=module,
         allowlist=allowlist,
         denylist=denylist,
-        subclass=True)
+        avoid_class_mutation=True)
     return fn_or_cls
 
   if decoration_target:
@@ -1417,7 +1487,7 @@ def _config_str(configuration_object,
   """Print the configuration specified in configuration object.
 
   Args:
-    configuration_object: Either OPERATIVE_CONFIG_ (operative config) or _CONFIG
+    configuration_object: Either _OPERATIVE_CONFIG (operative config) or _CONFIG
       (all config, bound and unbound).
     max_line_length: A (soft) constraint on the maximum length of a line in the
       formatted string. Large nested structures will be split across lines, but
