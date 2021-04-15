@@ -20,6 +20,7 @@ import inspect
 import io
 import logging
 import os
+import pickle
 import threading
 
 from absl.testing import absltest
@@ -242,6 +243,72 @@ class ConfigurableClass:
 
 
 @config.configurable
+class ConfigurableClassWithNew(object):
+  """A configurable class with __new__."""
+
+  def __new__(cls, kwarg1=None, kwarg2=None, return_none=False):
+    del kwarg2
+    if return_none:  # This will test __new__ and __init__ separation.
+      return None
+    instance = super(ConfigurableClassWithNew, cls).__new__(cls)
+    instance.kwarg1 = kwarg1
+    return instance
+
+  def __init__(self, kwarg1=None, kwarg2=None, return_none=False):
+    del return_none
+    self.kwarg1 = kwarg1
+    self.kwarg2 = kwarg2
+
+
+class MetaWithPostNewHook(type):
+
+  def __call__(cls, *args, post_new_hook=None, **kwargs):
+    instance = cls.__new__(cls, *args, **kwargs)
+    if post_new_hook is not None:  # This will allow to inspect post-new state.
+      post_new_hook(instance)
+    instance.__init__(*args, **kwargs)
+    return instance
+
+
+@config.configurable
+class ConfigurableClassWithMetaAndNew(object, metaclass=MetaWithPostNewHook):
+  """A configurable class with metaclass and __new__."""
+
+  def __new__(cls, kwarg1=None, kwarg2=None, return_none=False):
+    del kwarg2
+    if return_none:  # This will test __new__ and __init__ separation.
+      return None
+    instance = super(ConfigurableClassWithMetaAndNew, cls).__new__(cls)
+    instance.kwarg1 = kwarg1
+    return instance
+
+  def __init__(self, kwarg1=None, kwarg2=None, return_none=False):
+    del return_none
+    self.kwarg1 = kwarg1
+    self.kwarg2 = kwarg2
+
+
+@config.configurable
+class ConfigurableClassWithMeta(metaclass=MetaWithPostNewHook):
+  """A configurable class with metaclass."""
+
+  def __init__(self, kwarg1=None, kwarg2=None):
+    self.kwarg1 = kwarg1
+    self.kwarg2 = kwarg2
+
+
+@config.configurable
+class FaultyConfigurableClassWithMeta(metaclass=MetaWithPostNewHook):
+  """A configurable class with metaclass."""
+
+  class FaultyError(AssertionError):
+    pass
+
+  def __init__(self, kwarg1=None, kwarg2=None):
+    raise FaultyConfigurableClassWithMeta.FaultyError('Intentional error.')
+
+
+@config.configurable
 class ConfigurableSubclass(ConfigurableClass):
   """A subclass of a configurable class."""
 
@@ -288,8 +355,6 @@ class ObjectSubclassWithoutInit:
 
 class ExternalClass:
   """A class we'll pretend was defined somewhere else."""
-
-  __module__ = 'timbuktu'
 
   def __init__(self, kwarg1=None, kwarg2=None):
     self.kwarg1 = kwarg1
@@ -342,6 +407,27 @@ class ExternalAbstractConfigurableSubclass(AbstractConfigurable):
     pass
 
 config.external_configurable(ExternalAbstractConfigurableSubclass)
+
+
+class ExternalConfigurableClassWithMetaAndNew(metaclass=MetaWithPostNewHook):
+  """A configurable class with metaclass and __new__."""
+
+  def __new__(cls, kwarg1=None, kwarg2=None, return_none=False):
+    del kwarg2
+    if return_none:  # This will test __new__ and __init__ separation.
+      return None
+    instance = super(ExternalConfigurableClassWithMetaAndNew, cls).__new__(cls)
+    instance.kwarg1 = kwarg1
+    return instance
+
+  def __init__(self, kwarg1=None, kwarg2=None, return_none=False):
+    del return_none
+    self.kwarg1 = kwarg1
+    self.kwarg2 = kwarg2
+
+
+external_configurable_class_with_meta_and_new = config.external_configurable(
+    ExternalConfigurableClassWithMetaAndNew)
 
 
 class ConfigTest(absltest.TestCase):
@@ -645,6 +731,184 @@ class ConfigTest(absltest.TestCase):
     instance = ConfigurableClass()
     self.assertEqual(instance.kwarg1, 'statler')
     self.assertEqual(instance.kwarg2, 'waldorf')
+    self.assertEqual(instance.__dict__,
+                     pickle.loads(pickle.dumps(instance)).__dict__)
+
+  def testConfigurableClassWithNew(self):
+    config_str = """
+      ConfigurableClassWithNew.kwarg1 = 'statler'
+      ConfigurableClassWithNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    instance = ConfigurableClassWithNew()
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+    self.assertEqual(instance.__dict__,
+                     pickle.loads(pickle.dumps(instance)).__dict__)
+
+  def testConfigurableClassWithNewCanReturnOtherType(self):
+    config_str = """
+      ConfigurableClassWithNew.kwarg1 = 'statler'
+      ConfigurableClassWithNew.kwarg2 = 'waldorf'
+      ConfigurableClassWithNew.return_none = True
+    """
+    config.parse_config(config_str)
+    instance = ConfigurableClassWithNew()
+    self.assertIsNotNone(instance)
+
+    config_str = """
+      ConfigurableClassWithNew.kwarg1 = 'statler'
+      ConfigurableClassWithNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    instance = ConfigurableClassWithNew(return_none=True)
+    self.assertIsNone(instance)
+
+  def testConfigurableClassWithMetaAndNew(self):
+    config_str = """
+      ConfigurableClassWithMetaAndNew.kwarg1 = 'statler'
+      ConfigurableClassWithMetaAndNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    instance = ConfigurableClassWithMetaAndNew()
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+    self.assertEqual(instance.__dict__,
+                     pickle.loads(pickle.dumps(instance)).__dict__)
+
+  def testConfigurableClassWithMetaAndNewPostNewHook(self):
+    config_str = """
+      ConfigurableClassWithMetaAndNew.kwarg1 = 'statler'
+      ConfigurableClassWithMetaAndNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+
+    class ValidateHookError(AssertionError):
+      pass
+
+    def fail(_):
+      raise ValidateHookError('Expected exception.')
+
+    with self.assertRaises(ValidateHookError):
+      ConfigurableClassWithMetaAndNew(post_new_hook=fail)  # pylint: disable=unexpected-keyword-arg
+
+  def testConfigurableClassWithMetaAndNewSeparatesNewAndInit(self):
+    config_str = """
+      ConfigurableClassWithMetaAndNew.kwarg1 = 'statler'
+      ConfigurableClassWithMetaAndNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+
+    def calls_new_with_no_injection_when_init_present(instance):
+      self.assertIsNone(instance.kwarg1)
+      self.assertFalse(hasattr(instance, 'kwarg2'))
+
+    instance = ConfigurableClassWithMetaAndNew(  # pylint: disable=unexpected-keyword-arg
+        post_new_hook=calls_new_with_no_injection_when_init_present)
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+
+  def testConfigurableClassWithMeta(self):
+    config_str = """
+      ConfigurableClassWithMeta.kwarg1 = 'statler'
+      ConfigurableClassWithMeta.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    instance = ConfigurableClassWithMeta()
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+    self.assertEqual(instance.__dict__,
+                     pickle.loads(pickle.dumps(instance)).__dict__)
+
+  def testConfigurableClassWithMetaPostNewHook(self):
+    config_str = """
+      ConfigurableClassWithMeta.kwarg1 = 'statler'
+      ConfigurableClassWithMeta.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+
+    class ValidateHookError(AssertionError):
+      pass
+
+    def fail(_):
+      raise ValidateHookError('Expected exception.')
+
+    with self.assertRaises(ValidateHookError):
+      ConfigurableClassWithMeta(post_new_hook=fail)  # pylint: disable=unexpected-keyword-arg
+
+  def testConfigurableClassWithMetaSeparatesNewAndInit(self):
+    config_str = """
+      ConfigurableClassWithMeta.kwarg1 = 'statler'
+      ConfigurableClassWithMeta.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+
+    def no_attrs(instance):
+      self.assertFalse(hasattr(instance, 'kwarg1'))
+      self.assertFalse(hasattr(instance, 'kwarg2'))
+
+    instance = ConfigurableClassWithMeta(post_new_hook=no_attrs)  # pylint: disable=unexpected-keyword-arg
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+
+  def testFaultyConfigurableClassWithMeta(self):
+    config_str = """
+      FaultyConfigurableClassWithMeta.kwarg1 = 'statler'
+      FaultyConfigurableClassWithMeta.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+
+    with self.assertRaises(FaultyConfigurableClassWithMeta.FaultyError):
+      FaultyConfigurableClassWithMeta()
+
+  def testExternalConfigurableClassWithMetaAndNewPostNewHook(self):
+    config_str = """
+      ExternalConfigurableClassWithMetaAndNew.kwarg1 = 'statler'
+      ExternalConfigurableClassWithMetaAndNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+
+    class ValidateHookError(AssertionError):
+      pass
+
+    def fail(_):
+      raise ValidateHookError('Expected exception.')
+
+    with self.assertRaises(ValidateHookError):
+      external_configurable_class_with_meta_and_new(post_new_hook=fail)
+
+  def testExternalConfigurableClassWithMetaAndNew(self):
+    config_str = """
+      ExternalConfigurableClassWithMetaAndNew.kwarg1 = 'statler'
+      ExternalConfigurableClassWithMetaAndNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    instance = external_configurable_class_with_meta_and_new()
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
+    self.assertEqual(instance.__dict__,
+                     pickle.loads(pickle.dumps(instance)).__dict__)
+
+  def testExternalConfigurableClassWithMetaAndNewSeparatesNewAndInit(self):
+    config_str = """
+      ExternalConfigurableClassWithMetaAndNew.kwarg1 = 'statler'
+      ExternalConfigurableClassWithMetaAndNew.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+
+    # Due to the strategy of overriding the metaclass's __call__ method for
+    # types registered with external_configurable, __new__ will be called with
+    # injected values. The __new__ implementation for this test class only sets
+    # the value for kwarg1, while kwarg2 is set in __init__.
+    def calls_new_with_no_injection_when_init_present(instance):
+      self.assertEqual(instance.kwarg1, 'statler')
+      self.assertFalse(hasattr(instance, 'kwarg2'))
+
+    instance = external_configurable_class_with_meta_and_new(
+        post_new_hook=calls_new_with_no_injection_when_init_present)
+
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
 
   def testConfigurableReferenceClassIdentityIsPreserved(self):
     config_str = """
@@ -695,6 +959,8 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(sub_instance.kwarg1, 'some')
     self.assertIsNone(sub_instance.kwarg2)
     self.assertEqual(sub_instance.kwarg3, 'thing')
+    self.assertEqual(sub_instance.__dict__,
+                     pickle.loads(pickle.dumps(sub_instance)).__dict__)
 
   def testConfigurableMethod(self):
     config_str = """
@@ -725,6 +991,17 @@ class ConfigTest(absltest.TestCase):
     self.assertIsInstance(instance, ExternalClass)
     self.assertEqual(instance.kwarg1, 'statler')
     self.assertEqual(instance.kwarg2, 'waldorf')
+
+    config_str = """
+      ConfigurableClass.kwarg1 = @ExternalConfigurable
+      ExternalConfigurable.kwarg1 = 'statler'
+      ExternalConfigurable.kwarg2 = 'waldorf'
+    """
+    config.parse_config(config_str)
+    configurable_class = ConfigurableClass()
+    instance = configurable_class.kwarg1()
+    self.assertEqual(instance.__dict__,
+                     pickle.loads(pickle.dumps(instance)).__dict__)
 
   def testAbstractExternalConfigurableClass(self):
     config_str = """
