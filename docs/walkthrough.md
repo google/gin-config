@@ -234,7 +234,7 @@ Any parameters set on the "root" (unscoped) function name are inherited by
 scoped variants (unless explicitly overridden), so in the above example both the
 generator and the discriminator use the `tf.nn.tanh` activation function.
 
-### 5. Full hierarchical configuration
+### 5. Full hierarchical configuration {#full-hierarchical}
 
 The greatest degree of flexibility and configurability in a project is achieved
 by writing small modular functions and "wiring them up" hierarchically via
@@ -345,7 +345,7 @@ practices:
 -   In fact, to aid readability for complex config files, we gently suggest
     always including module names to help make it easier to find corresponding
     definitions in Python code.
--   When doing "full hierarchical configuration" (section 4 above), structure
+-   When doing ["full hierarchical configuration"](#full-hierarchical), structure
     the code to minimize the number of "top-level" functions that are
     configured without themselves being passed as parameters. In other words,
     the configuration tree should have only one root.
@@ -392,7 +392,7 @@ include a dotted module name prefix (`some.module.function_name`).
       <td><code>name.param&nbsp;=&nbsp;value</code></td>
       <td>Basic syntax of a Gin binding. Once this is parsed, when the
       function or class named <code>name</code> is called, it will receive
-      <code>value</code> as the value for <code>parameter</code>, unless a
+      <code>value</code> as the value for <code>param</code>, unless a
       value is explicitly supplied by the caller. Any Python literal may be
       supplied as <code>value</code>.</td>
     </tr>
