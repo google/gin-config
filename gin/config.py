@@ -191,7 +191,7 @@ REQUIRED = object()
 
 def _find_class_construction_fn(cls):
   """Find the first __init__ or __new__ method in the given class's MRO."""
-  for base in cls.mro():  # pytype: disable=attribute-error
+  for base in inspect.getmro(cls):  # pytype: disable=wrong-arg-types
     if '__init__' in base.__dict__:
       return base.__init__
     if '__new__' in base.__dict__:
@@ -317,6 +317,13 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, avoid_class_mutation=False):
         attr: getattr(cls, attr)
         for attr in ('__module__', '__name__', '__qualname__', '__doc__')
     }
+    # If `cls` won't have a `__dict__` attribute, disable `__dict__` creation on
+    # our subclass as well. This seems like generally correct behavior, and also
+    # prevents errors that can arise under some very specific circumstances due
+    # to a CPython bug in type creation.
+    if getattr(cls, '__dictoffset__', None) == 0:
+      overrides['__slots__'] = ()
+    # Finally, create the decorated class using the metaclass created above.
     decorated_class = decorating_meta(cls.__name__, (cls,), overrides)
   else:
     # Here, we just decorate `__init__` or `__new__` directly, and mutate the

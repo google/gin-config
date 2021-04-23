@@ -15,7 +15,13 @@
 
 import gin.tf
 
+import numpy as np
 import tensorflow as tf
+
+
+@gin.configurable
+def pass_through(arg):
+  return arg
 
 
 class TFConfigTest(tf.test.TestCase):
@@ -41,6 +47,12 @@ class TFConfigTest(tf.test.TestCase):
     # the exception message, which is caught with the '\S*'.
     self.assertRegex(
         str(assert_raises.exception), r"'config_name' \(<function \S*broken")
+
+  def testReferenceNumpyFloat64(self):
+    gin.register(np.float64, module='np')
+    gin.parse_config('pass_through.arg = @np.float64()')
+    value = pass_through(gin.REQUIRED)
+    self.assertIsInstance(value, np.float64)
 
 
 if __name__ == '__main__':
