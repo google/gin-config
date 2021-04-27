@@ -29,6 +29,7 @@ from gin.config import enter_interactive_mode
 from gin.config import exit_interactive_mode
 from gin.config import external_configurable
 from gin.config import finalize
+from gin.config import get_bindings
 from gin.config import operative_config_str
 from gin.config import parse_config
 from gin.config import parse_config_file
