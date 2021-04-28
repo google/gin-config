@@ -93,7 +93,7 @@ import pprint
 import sys
 import threading
 import traceback
-from typing import Optional, Sequence, Union
+from typing import Any, Callable, Dict, Optional, Sequence, Type, Union
 
 from gin import config_parser
 from gin import selector_map
@@ -139,6 +139,8 @@ class _ScopeManager(threading.local):
 
 # Maintains the registry of configurable functions and classes.
 _REGISTRY = selector_map.SelectorMap()
+# Inverse registry to recover a binding from a function or class.
+_FN_OR_CLS_TO_SELECTOR = {}
 
 # Maps tuples of `(scope, selector)` to associated parameter values. This
 # specifies the current global "configuration" set through `bind_parameter` or
@@ -983,6 +985,51 @@ def config_scope(name_or_scope):
     _SCOPE_MANAGER.exit_scope()
 
 
+def get_bindings(
+    fn_or_cls: Union[str, Callable[..., Any], Type[Any]],
+) -> Dict[str, Any]:
+  """Returns the bindings associated with the given configurable.
+
+  Example:
+
+  ```python
+  config.parse_config('MyParams.kwarg0 = 123')
+
+  gin.get_bindings('MyParams') == {'kwarg0': 123}
+  ```
+
+  Note: The scope in which `get_bindings` is called will be used.
+
+  Args:
+    fn_or_cls: Configurable function, class or selector `str`.
+
+  Returns:
+    The bindings kwargs injected by Gin.
+  """
+  if isinstance(fn_or_cls, str):
+    # Resolve partial selector -> full selector
+    selector = _REGISTRY.get_match(fn_or_cls)
+    if selector:
+      selector = selector.selector
+  else:
+    selector = _FN_OR_CLS_TO_SELECTOR.get(fn_or_cls)
+
+  if selector is None:
+    raise ValueError(f'Could not find {fn_or_cls} in the Gin registry.')
+
+  return _get_bindings(selector)
+
+
+def _get_bindings(selector: str) -> Dict[str, Any]:
+  """Returns the bindings for the current full selector."""
+  scope_components = current_scope()
+  new_kwargs = {}
+  for i in range(len(scope_components) + 1):
+    partial_scope_str = '/'.join(scope_components[:i])
+    new_kwargs.update(_CONFIG.get((partial_scope_str, selector), {}))
+  return new_kwargs
+
+
 def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
   """Creates the final Gin wrapper for the given function.
 
@@ -1015,13 +1062,9 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
   @functools.wraps(fn)
   def gin_wrapper(*args, **kwargs):
     """Supplies fn with parameter values from the configuration."""
-    scope_components = current_scope()
-    new_kwargs = {}
-    for i in range(len(scope_components) + 1):
-      partial_scope_str = '/'.join(scope_components[:i])
-      new_kwargs.update(_CONFIG.get((partial_scope_str, selector), {}))
+    new_kwargs = _get_bindings(selector)
     gin_bound_args = list(new_kwargs.keys())
-    scope_str = partial_scope_str
+    scope_str = '/'.join(current_scope())
 
     arg_names = _get_supplied_positional_parameter_names(signature_fn, args)
 
@@ -1147,6 +1190,27 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
   return gin_wrapper
 
 
+def _make_selector(
+    fn_or_cls,
+    *,
+    name: Optional[str],
+    module: Optional[str],
+) -> str:
+  """Returns the Gin name selector."""
+  name = fn_or_cls.__name__ if name is None else name
+  if config_parser.IDENTIFIER_RE.match(name):
+    default_module = getattr(fn_or_cls, '__module__', None)
+    module = default_module if module is None else module
+  elif not config_parser.MODULE_RE.match(name):
+    raise ValueError("Configurable name '{}' is invalid.".format(name))
+
+  if module is not None and not config_parser.MODULE_RE.match(module):
+    raise ValueError("Module '{}' is invalid.".format(module))
+
+  selector = module + '.' + name if module else name
+  return selector
+
+
 def _make_configurable(fn_or_cls,
                        name=None,
                        module=None,
@@ -1188,17 +1252,12 @@ def _make_configurable(fn_or_cls,
     err_str = 'Attempted to add a new configurable after the config was locked.'
     raise RuntimeError(err_str)
 
-  name = fn_or_cls.__name__ if name is None else name
-  if config_parser.IDENTIFIER_RE.match(name):
-    default_module = getattr(fn_or_cls, '__module__', None)
-    module = default_module if module is None else module
-  elif not config_parser.MODULE_RE.match(name):
-    raise ValueError("Configurable name '{}' is invalid.".format(name))
+  selector = _make_selector(
+      fn_or_cls,
+      name=name,
+      module=module,
+  )
 
-  if module is not None and not config_parser.MODULE_RE.match(module):
-    raise ValueError("Module '{}' is invalid.".format(module))
-
-  selector = module + '.' + name if module else name
   if not _INTERACTIVE_MODE and selector in _REGISTRY:
     err_str = ("A configurable matching '{}' already exists.\n\n"
                'To allow re-registration of configurables in an interactive '
@@ -1234,6 +1293,8 @@ def _make_configurable(fn_or_cls,
       allowlist=allowlist,
       denylist=denylist,
       selector=selector)
+  # Inverse registry.
+  _FN_OR_CLS_TO_SELECTOR[decorated_fn_or_cls] = selector
   return decorated_fn_or_cls
 
 

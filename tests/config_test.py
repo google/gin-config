@@ -1985,6 +1985,73 @@ class ConfigTest(absltest.TestCase):
         [], ['TEST=1'], print_includes_and_imports=True)
     self.assertListEqual(result, [])
 
+  def testGetBindings(self):
+    # Bindings can be accessed through name or object
+    # Default are empty
+    self.assertDictEqual(config.get_bindings('configurable1'), {})
+    self.assertDictEqual(config.get_bindings(fn1), {})
+
+    self.assertDictEqual(config.get_bindings('ConfigurableClass'), {})
+    self.assertDictEqual(config.get_bindings(ConfigurableClass), {})
+
+    config_str = """
+      configurable1.non_kwarg = 'kwarg1'
+      configurable1.kwarg2 = 123
+      ConfigurableClass.kwarg1 = 'okie dokie'
+    """
+    config.parse_config(config_str)
+
+    self.assertDictEqual(config.get_bindings('configurable1'), {
+        'non_kwarg': 'kwarg1',
+        'kwarg2': 123,
+    })
+    self.assertDictEqual(config.get_bindings(fn1), {
+        'non_kwarg': 'kwarg1',
+        'kwarg2': 123,
+    })
+
+    self.assertDictEqual(config.get_bindings('ConfigurableClass'), {
+        'kwarg1': 'okie dokie',
+    })
+    self.assertDictEqual(config.get_bindings(ConfigurableClass), {
+        'kwarg1': 'okie dokie',
+    })
+
+  def testGetBindingsScope(self):
+    config_str = """
+      configurable1.non_kwarg = 'kwarg1'
+      configurable1.kwarg2 = 123
+      scope/configurable1.kwarg2 = 456
+    """
+    config.parse_config(config_str)
+
+    self.assertDictEqual(config.get_bindings('configurable1'), {
+        'non_kwarg': 'kwarg1',
+        'kwarg2': 123,
+    })
+    self.assertDictEqual(config.get_bindings(fn1), {
+        'non_kwarg': 'kwarg1',
+        'kwarg2': 123,
+    })
+
+    with config.config_scope('scope'):
+      self.assertDictEqual(config.get_bindings('configurable1'), {
+          'non_kwarg': 'kwarg1',
+          'kwarg2': 456,
+      })
+      self.assertDictEqual(config.get_bindings(fn1), {
+          'non_kwarg': 'kwarg1',
+          'kwarg2': 456,
+      })
+
+  def testGetBindingsUnknown(self):
+    expected_msg = 'Could not find .* in the Gin registry'
+    with self.assertRaisesRegex(ValueError, expected_msg):
+      config.get_bindings('UnknownParam')
+
+    with self.assertRaisesRegex(ValueError, expected_msg):
+      config.get_bindings(lambda x: None)
+
 
 if __name__ == '__main__':
   absltest.main()
