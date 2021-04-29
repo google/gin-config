@@ -93,6 +93,7 @@ import pprint
 import sys
 import threading
 import traceback
+import typing
 from typing import Any, Callable, Dict, Optional, Sequence, Type, Union
 
 from gin import config_parser
@@ -139,8 +140,13 @@ class _ScopeManager(threading.local):
 
 # Maintains the registry of configurable functions and classes.
 _REGISTRY = selector_map.SelectorMap()
-# Inverse registry to recover a binding from a function or class.
-_FN_OR_CLS_TO_SELECTOR = {}
+
+# Maps registered functions or classes to their associated Configurable object.
+_INVERSE_REGISTRY = {}
+
+# Maps old selector names to new selector names for selectors that are renamed.
+# This is used for handling renaming of class method modules.
+_RENAMED_SELECTORS = {}
 
 # Maps tuples of `(scope, selector)` to associated parameter values. This
 # specifies the current global "configuration" set through `bind_parameter` or
@@ -218,6 +224,34 @@ def _ensure_wrappability(fn):
   return fn
 
 
+def _find_registered_methods(cls, selector):
+  """Finds methods in `cls` that have been wrapped or registered with Gin."""
+  registered_methods = {}
+  for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+    if method in _INVERSE_REGISTRY:
+      method_info = _INVERSE_REGISTRY[method]
+      if method_info.module != method.__module__:
+        raise ValueError(
+            f'Method {name} in class {cls} ({selector}) was registered with a '
+            f'custom module ({method_info.module}), but the class is also '
+            f'being registered. Avoid specifying a module on the method to '
+            f'allow class registration to modify the method module name.')
+      old_selector = method_info.selector
+      new_selector = selector + '.' + method_info.name
+      method_info = method_info._replace(
+          module=selector, selector=new_selector, is_method=True)
+      _RENAMED_SELECTORS[old_selector] = new_selector
+      _REGISTRY.pop(old_selector)
+      _REGISTRY[new_selector] = method_info
+      _INVERSE_REGISTRY[method] = method_info
+      registered_methods[name] = method_info.fn_or_cls
+    else:
+      unwrapped = inspect.unwrap(method, stop=lambda f: f in _INVERSE_REGISTRY)
+      if unwrapped in _INVERSE_REGISTRY:
+        registered_methods[name] = method
+  return registered_methods
+
+
 def _make_meta_call_wrapper(cls):
   """Creates a pickle-compatible wrapper for `type(cls).__call__`.
 
@@ -254,7 +288,11 @@ def _make_meta_call_wrapper(cls):
   return meta_call_wrapper
 
 
-def _decorate_fn_or_cls(decorator, fn_or_cls, avoid_class_mutation=False):
+def _decorate_fn_or_cls(decorator,
+                        fn_or_cls,
+                        selector,
+                        avoid_class_mutation=False,
+                        decorate_methods=False):
   """Decorate a function or class with the given decorator.
 
   When `fn_or_cls` is a function, applies `decorator` to the function and
@@ -279,8 +317,11 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, avoid_class_mutation=False):
   Args:
     decorator: The decorator to use.
     fn_or_cls: The function or class to decorate.
+    selector: The Gin selector for `fn_or_cls`. This is used to modify method
+      modules to match the overall class selector.
     avoid_class_mutation: Whether to avoid class mutation using dynamic
       subclassing. This argument is ignored if `fn_or_cls` is not a class.
+    decorate_methods: Whether to also decorate Gin-registered methods.
 
   Returns:
     The decorated function or class.
@@ -290,23 +331,36 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, avoid_class_mutation=False):
   cls = fn_or_cls
   if avoid_class_mutation:
     # This approach enables @gin.register and gin.external_configurable(), and
-    # is in most cases compatible with pickling instances. The basic strategy
-    # here is to create a new metaclass (subclassing the class's metaclass to
-    # preserve behavior), wrapping its __call__ method to return an instance of
-    # the *original* (undecorated) class. Gin's wrapper is then applied to this
-    # decorated __call__ method to ensure any configured parameters are passed
-    # through to `__init__` or `__new__` appropriately. We can't use it for
+    # is in most cases compatible with pickling instances. We can't use it for
     # @gin.configurable because the decorated class returned below can interact
     # poorly with `super(type, obj)` if `type` references the decorated version
     # while `obj` is an instance of the original undecorated class.
-    meta_call = _make_meta_call_wrapper(cls)  # See this for additional details.
-    # We decorate our wrapped metaclass __call__ with Gin's wrapper.
+    method_overrides = _find_registered_methods(cls, selector)
+    if decorate_methods:
+      method_overrides = {
+          name: decorator(method) for name, method in method_overrides.items()
+      }
+    cls_meta = type(cls)  # The metaclass of the given class.
+    if method_overrides:
+      # If we have methods to override, we just use cls_meta.__call__ directly.
+      # This creates a new sub-class instance (`decorated_class` below) that
+      # contains the replaced methods, but also means the dynamically created
+      # class isn't pickle-compatible, since it differs from the base class.
+      meta_call = cls_meta.__call__
+    else:
+      # Otherwise, we wrap the __call__ method on the metaclass. The basic
+      # strategy here is to create a new metaclass (subclassing the class's
+      # metaclass to preserve behavior), wrapping its __call__ method to return
+      # an instance of the *original* (undecorated) class. Gin's wrapper is then
+      # applied to this decorated __call__ method to ensure any configured
+      # parameters are passed through to `__init__` or `__new__` appropriately.
+      meta_call = _make_meta_call_wrapper(cls)  # See this for more details.
+    # We decorate our possibly-wrapped metaclass __call__ with Gin's wrapper.
     decorated_call = decorator(_ensure_wrappability(meta_call))
     # And now construct a new metaclass, subclassing the one from `cls`,
     # supplying our decorated `__call__`. Most often this is just subclassing
     # Python's `type`, but when `cls` has a custom metaclass set, this ensures
     # that it will continue to work properly.
-    cls_meta = type(cls)  # The metaclass of the given class.
     decorating_meta = type(cls_meta)(cls_meta.__name__, (cls_meta,), {
         '__call__': decorated_call,
     })
@@ -325,6 +379,8 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, avoid_class_mutation=False):
     # to a CPython bug in type creation.
     if getattr(cls, '__dictoffset__', None) == 0:
       overrides['__slots__'] = ()
+    # Update our overrides with any methods we need to replace.
+    overrides.update(method_overrides)
     # Finally, create the decorated class using the metaclass created above.
     decorated_class = decorating_meta(cls.__name__, (cls,), overrides)
   else:
@@ -340,11 +396,14 @@ def _decorate_fn_or_cls(decorator, fn_or_cls, avoid_class_mutation=False):
   return decorated_class
 
 
-class Configurable(
-    collections.namedtuple(
-        'Configurable',
-        ['fn_or_cls', 'name', 'module', 'allowlist', 'denylist', 'selector'])):
-  pass
+class Configurable(typing.NamedTuple):
+  fn_or_cls: Callable[..., Any]
+  name: str
+  module: str
+  allowlist: Optional[Sequence[str]]
+  denylist: Optional[Sequence[str]]
+  selector: str
+  is_method: bool = False
 
 
 def _raise_unknown_reference_error(ref, additional_msg=''):
@@ -379,7 +438,11 @@ class ConfigurableReference:
       return fn
 
     self._scoped_configurable_fn = _decorate_fn_or_cls(
-        reference_decorator, self.configurable.fn_or_cls, True)
+        reference_decorator,
+        self.configurable.fn_or_cls,
+        self.configurable.selector,
+        avoid_class_mutation=True,
+        decorate_methods=True)
 
   @property
   def configurable(self):
@@ -531,10 +594,7 @@ class ParserDelegate(config_parser.ParserDelegate):
     return ConfigurableReference(name + '/gin.macro', True)
 
 
-class ParsedBindingKey(
-    collections.namedtuple(
-        'ParsedBindingKey',
-        ['scope', 'given_selector', 'complete_selector', 'arg_name'])):
+class ParsedBindingKey(typing.NamedTuple):
   """Represents a parsed and validated binding key.
 
   A "binding key" identifies a specific parameter (`arg_name`), of a specific
@@ -545,7 +605,13 @@ class ParsedBindingKey(
   purposes of equality and hashing).
   """
 
-  def __new__(cls, binding_key):
+  scope: str
+  given_selector: str
+  complete_selector: str
+  arg_name: str
+
+  @classmethod
+  def parse(cls, binding_key):
     """Parses and validates the given binding key.
 
     This function will parse `binding_key` (if necessary), and ensure that the
@@ -569,7 +635,7 @@ class ParsedBindingKey(
         denylisted or not in the function's allowlist (if present).
     """
     if isinstance(binding_key, ParsedBindingKey):
-      return super(ParsedBindingKey, cls).__new__(cls, *binding_key)  # pytype: disable=missing-parameter
+      return cls(*binding_key)
 
     if isinstance(binding_key, (list, tuple)):
       scope, selector, arg_name = binding_key
@@ -583,6 +649,11 @@ class ParsedBindingKey(
     if not configurable_:
       raise ValueError("No configurable matching '{}'.".format(selector))
 
+    if configurable_.is_method and '.' not in selector:
+      class_name = configurable_.selector.split('.')[-2]
+      err_str = "Method '{}' referenced without class name '{}'."
+      raise ValueError(err_str.format(selector, class_name))
+
     if not _might_have_parameter(configurable_.fn_or_cls, arg_name):
       err_str = "Configurable '{}' doesn't have a parameter named '{}'."
       raise ValueError(err_str.format(selector, arg_name))
@@ -595,8 +666,7 @@ class ParsedBindingKey(
       err_str = "Configurable '{}' has denylisted kwarg '{}'."
       raise ValueError(err_str.format(selector, arg_name))
 
-    return super(ParsedBindingKey, cls).__new__(
-        cls,
+    return cls(
         scope=scope,
         given_selector=selector,
         complete_selector=configurable_.selector,
@@ -716,7 +786,7 @@ def bind_parameter(binding_key, value):
   if config_is_locked():
     raise RuntimeError('Attempted to modify locked Gin config.')
 
-  pbk = ParsedBindingKey(binding_key)
+  pbk = ParsedBindingKey.parse(binding_key)
   fn_dict = _CONFIG.setdefault(pbk.config_key, {})
   fn_dict[pbk.arg_name] = value
 
@@ -748,7 +818,7 @@ def query_parameter(binding_key):
     elif len(matching_selectors) > 1:
       err_str = "Ambiguous constant selector '{}', matches {}."
       raise ValueError(err_str.format(binding_key, matching_selectors))
-  pbk = ParsedBindingKey(binding_key)
+  pbk = ParsedBindingKey.parse(binding_key)
   if pbk.config_key not in _CONFIG:
     err_str = "Configurable '{}' has no bound parameters."
     raise ValueError(err_str.format(pbk.given_selector))
@@ -1012,7 +1082,9 @@ def get_bindings(
     if selector:
       selector = selector.selector
   else:
-    selector = _FN_OR_CLS_TO_SELECTOR.get(fn_or_cls)
+    unwrapped = inspect.unwrap(fn_or_cls, stop=lambda x: x in _INVERSE_REGISTRY)
+    configurable_ = _INVERSE_REGISTRY.get(unwrapped)
+    selector = configurable_.selector if configurable_ else None
 
   if selector is None:
     raise ValueError(f'Could not find {fn_or_cls} in the Gin registry.')
@@ -1062,7 +1134,8 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
   @functools.wraps(fn)
   def gin_wrapper(*args, **kwargs):
     """Supplies fn with parameter values from the configuration."""
-    new_kwargs = _get_bindings(selector)
+    current_selector = _RENAMED_SELECTORS.get(selector, selector)
+    new_kwargs = _get_bindings(current_selector)
     gin_bound_args = list(new_kwargs.keys())
     scope_str = '/'.join(current_scope())
 
@@ -1116,7 +1189,7 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
     # Gin-supplied or default value will be present if it was used (not
     # overridden by the caller) at least once.
     with _OPERATIVE_CONFIG_LOCK:
-      op_cfg = _OPERATIVE_CONFIG.setdefault((scope_str, selector), {})
+      op_cfg = _OPERATIVE_CONFIG.setdefault((scope_str, current_selector), {})
       op_cfg.update(operative_parameter_values)
 
     # We call deepcopy for two reasons: First, to prevent the called function
@@ -1153,7 +1226,7 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
       missing_required_params = (
           _order_by_signature(signature_fn, missing_required_params))
       err_str = 'Required bindings for `{}` not provided in config: {}'
-      minimal_selector = _REGISTRY.minimal_selector(selector)
+      minimal_selector = _REGISTRY.minimal_selector(current_selector)
       err_str = err_str.format(minimal_selector, missing_required_params)
       raise RuntimeError(err_str)
 
@@ -1188,27 +1261,6 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
       utils.augment_exception_message_and_reraise(e, err_str)
 
   return gin_wrapper
-
-
-def _make_selector(
-    fn_or_cls,
-    *,
-    name: Optional[str],
-    module: Optional[str],
-) -> str:
-  """Returns the Gin name selector."""
-  name = fn_or_cls.__name__ if name is None else name
-  if config_parser.IDENTIFIER_RE.match(name):
-    default_module = getattr(fn_or_cls, '__module__', None)
-    module = default_module if module is None else module
-  elif not config_parser.MODULE_RE.match(name):
-    raise ValueError("Configurable name '{}' is invalid.".format(name))
-
-  if module is not None and not config_parser.MODULE_RE.match(module):
-    raise ValueError("Module '{}' is invalid.".format(module))
-
-  selector = module + '.' + name if module else name
-  return selector
 
 
 def _make_configurable(fn_or_cls,
@@ -1252,12 +1304,17 @@ def _make_configurable(fn_or_cls,
     err_str = 'Attempted to add a new configurable after the config was locked.'
     raise RuntimeError(err_str)
 
-  selector = _make_selector(
-      fn_or_cls,
-      name=name,
-      module=module,
-  )
+  name = fn_or_cls.__name__ if name is None else name
+  if config_parser.IDENTIFIER_RE.match(name):
+    default_module = getattr(fn_or_cls, '__module__', None)
+    module = default_module if module is None else module
+  elif not config_parser.MODULE_RE.match(name):
+    raise ValueError("Configurable name '{}' is invalid.".format(name))
 
+  if module is not None and not config_parser.MODULE_RE.match(module):
+    raise ValueError("Module '{}' is invalid.".format(module))
+
+  selector = module + '.' + name if module else name
   if not _INTERACTIVE_MODE and selector in _REGISTRY:
     err_str = ("A configurable matching '{}' already exists.\n\n"
                'To allow re-registration of configurables in an interactive '
@@ -1284,17 +1341,17 @@ def _make_configurable(fn_or_cls,
                              denylist)
 
   decorated_fn_or_cls = _decorate_fn_or_cls(
-      decorator, fn_or_cls, avoid_class_mutation=avoid_class_mutation)
+      decorator, fn_or_cls, selector, avoid_class_mutation=avoid_class_mutation)
 
-  _REGISTRY[selector] = Configurable(
+  configurable_info = Configurable(
       decorated_fn_or_cls,
       name=name,
       module=module,
       allowlist=allowlist,
       denylist=denylist,
       selector=selector)
-  # Inverse registry.
-  _FN_OR_CLS_TO_SELECTOR[decorated_fn_or_cls] = selector
+  _REGISTRY[selector] = configurable_info
+  _INVERSE_REGISTRY[fn_or_cls] = configurable_info
   return decorated_fn_or_cls
 
 
@@ -1549,6 +1606,15 @@ def register(name_or_fn=None,
   return perform_decoration
 
 
+def _minimal_selector(configurable_):
+  minimal_selector = _REGISTRY.minimal_selector(configurable_.selector)
+  if configurable_.is_method:
+    # Methods require `Class.method` as selector.
+    if '.' not in minimal_selector:
+      minimal_selector = '.'.join(configurable_.selector.split('.')[-2:])
+  return minimal_selector
+
+
 def _config_str(configuration_object,
                 max_line_length=80,
                 continuation_indent=4):
@@ -1584,7 +1650,10 @@ def _config_str(configuration_object,
     """Sort configurable selector/innermost scopes, ignoring case."""
     scope, selector = key_tuple[0]
     parts = selector.lower().split('.')[::-1] + scope.lower().split('/')[::-1]
-    return '/'.join(parts)
+    if _REGISTRY[selector].is_method:
+      method_name = parts.pop(0)
+      parts[0] += f'.{method_name}'  # parts[0] is the class name.
+    return parts
 
   # Build the output as an array of formatted Gin statements. Each statement may
   # span multiple lines. Imports are first, followed by macros, and finally all
@@ -1616,7 +1685,7 @@ def _config_str(configuration_object,
     if fn == macro or fn == _retrieve_constant:  # pylint: disable=comparison-with-callable
       continue
 
-    minimal_selector = _REGISTRY.minimal_selector(configurable_.selector)
+    minimal_selector = _minimal_selector(configurable_)
     scoped_selector = (scope + '/' if scope else '') + minimal_selector
     parameters = [
         (k, v) for k, v in config.items() if _is_literally_representable(v)
@@ -1682,10 +1751,10 @@ def config_str(max_line_length=80, continuation_indent=4):
   return _config_str(_CONFIG, max_line_length, continuation_indent)
 
 
-class ParsedConfigFileIncludesAndImports(
-    collections.namedtuple('ParsedConfigFileIncludesAndImports',
-                           ['filename', 'imports', 'includes'])):
-  pass
+class ParsedConfigFileIncludesAndImports(typing.NamedTuple):
+  filename: str
+  imports: Sequence[str]
+  includes: Sequence['ParsedConfigFileIncludesAndImports']
 
 
 def parse_config(bindings, skip_unknown=False):
@@ -2061,7 +2130,7 @@ def finalize():
     new_bindings = hook(_CONFIG)
     if new_bindings is not None:
       for key, value in new_bindings.items():
-        pbk = ParsedBindingKey(key)
+        pbk = ParsedBindingKey.parse(key)
         if pbk in bindings:
           err_str = 'Received conflicting updates when running {}.'
           raise ValueError(err_str.format(hook))

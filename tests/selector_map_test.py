@@ -106,5 +106,25 @@ class SelectorMapTest(absltest.TestCase):
     self.assertEqual(sm.minimal_selector('a.a.a.moose'), 'moose')
     self.assertEqual(sm.minimal_selector('a.b.a.name'), 'b.a.name')
 
+  def testPop(self):
+    sm = selector_map.SelectorMap()
+    sm['a.a.a.name'] = 'one'
+    sm['a.b.a.name'] = 2
+    sm['a.a.a.moose'] = ['three']
+
+    self.assertLen(sm, 3)
+    self.assertEqual(sm.pop('a.a.a.name'), 'one')
+    self.assertLen(sm, 2)
+    self.assertNotIn('a.a.a.name', sm)
+    self.assertEqual(sm['a.a.a.moose'], ['three'])
+    self.assertEqual(sm.minimal_selector('a.b.a.name'), 'name')
+    self.assertEqual(sm.pop('a.a.a.moose'), ['three'])
+    self.assertLen(sm, 1)
+    self.assertNotIn('a.a.a.moose', sm)
+    self.assertEqual(list(sm.items()), [('a.b.a.name', 2)])
+    self.assertEqual(sm.pop('a.b.a.name'), 2)
+    self.assertEmpty(sm)
+
+
 if __name__ == '__main__':
   absltest.main()

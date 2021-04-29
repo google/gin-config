@@ -102,6 +102,20 @@ class SelectorMap:
   def __len__(self):
     return len(self._selector_map)
 
+  def pop(self, complete_selector):
+    """Removes (and returns) the value corresponding to `complete_selector`."""
+    value = self._selector_map.pop(complete_selector)
+    selector_components = complete_selector.split('.')[::-1]
+    nodes = [self._selector_tree]
+    for component in selector_components:
+      nodes.append(nodes[-1][component])
+    selector_components.append(_TERMINAL_KEY)
+    nodes[-1][_TERMINAL_KEY] = None
+    for component, node in zip(reversed(selector_components), reversed(nodes)):
+      if not node[component]:
+        node.pop(component)
+    return value
+
   def get(self, complete_selector, default=None):
     """Look up the value of `complete_selector` if present, or `default`."""
     return self._selector_map.get(complete_selector, default)

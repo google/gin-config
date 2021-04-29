@@ -31,7 +31,9 @@ parameters via a simple config file using a clear and powerful syntax. This
 approach reduces configuration maintenance, while making experiment
 configuration transparent and easily repeatable.
 
-## Making functions and classes configurable with `@gin.configurable`
+## Registering functions and classes with Gin
+
+### Using `@gin.configurable`
 
 Any function or class can be marked configurable using the `@gin.configurable`
 decorator:
@@ -53,13 +55,13 @@ The `@gin.configurable` decorator does three things:
     parameter settings (for parameters not already supplied by the function's
     caller).
 
-To determine which parameters are configurable, `@gin.configurable` takes a
+To determine which parameters are configurable, `@gin.configurable` takes an
 `allowlist` or a `denylist` parameter. If some parameters are allowlisted the
 others would be denylisted and vice versa. For instance, in the example above,
 allowlisting `num_layers` and `weight_decay` would imply that `images` and
 `num_outputs` are denylisted. Since configuring the `images` parameter doesn't
 make much sense, it would be best to denylist that parameter. Additionally, we
-might want a different name for the configurable object than "my_network":
+could specify a different name for the configurable object than "my_network":
 
 ```python
 @gin.configurable('supernet', denylist=['images'])
@@ -67,8 +69,58 @@ def my_network(images, num_outputs, num_layers=3, weight_decay=1e-4):
   ...
 ```
 
-In case of collisions, configurable names can be disambiguated by [specifying
-the module](#handling-naming-collisions-with-modules) of the intended configurable.
+In case of collisions, configurable names can be disambiguated by
+[specifying the module](#handling-naming-collisions-with-modules) of the
+intended configurable.
+
+### Using `gin.register`
+
+Gin additionally provides `gin.register`, which can be used either as a
+decorator or standalone function to register classes and functions with Gin. It
+has the same signature as `gin.configurable`, but performs "pure" registration,
+returning the original class or function unaltered (while storing a
+"configurable" version of the class in Gin's internal registry). This means that
+calls in Python to the class or function do not receive any parameters bound by
+Gin. Instead, the configurable version of the class can only be referenced
+within Gin files using [configurable references](#configurable-references) (see
+below for more details).
+
+As a general rule, in order to remain transparent to other Python code and to
+make it easier to reason about where Gin parameter "injection" takes place
+within a codebase, it is recommended to annotate most classes and functions with
+`@gin.register`, reserving a single `@gin.configurable` annotation for a "root"
+injection site.
+
+### Registering class methods
+
+In some cases, it may be desirable to also register class methods with Gin. Gin
+permits use of `gin.register` on class methods. If the class itself is also
+registered, any instances of the class will have registered methods replaced by
+their configurable versions, such that Gin bindings will apply. Additionally, at
+upon class registration, registered methods will have their module set to match
+that of the class, appended with the class name. Any [scopes](#scoping) applied
+to a class instance will also be applied for any registered methods called on
+that instance.
+
+For example:
+
+```python
+@gin.register
+class LanguageGenerator:
+
+  def __init__(self, network):
+    ...
+
+  @gin.register
+  def sample(self, temperature=0.0):
+    ...
+```
+
+Once `LanguageGenerator` has been registered, the `temperature` parameter of the
+`sample` method can have its parameters [bound](binding-parameters-to-values)
+within a Gin file via (for example)
+`generators.LanguageGenerator.sample.temperature = 1.0` (or simply
+`LanguageGenerator.sample.temperature = 1.0`).
 
 ## Binding parameters to values
 
@@ -77,27 +129,35 @@ programmatically using `gin.bind_parameter`, or supplied through a configuration
 string to `gin.parse_config` (generally more convenient). Programmatic binding
 uses the following syntax:
 
-    gin.bind_parameter('configurable_name.parameter_name', value)
+```
+gin.bind_parameter('configurable_name.parameter_name', value)
+```
 
 Here `configurable_name` refers to the registered configurable name (determined
 by `@gin.configurable`), `parameter_name` refers to the name of the function or
 constructor argument that should be set. For example, we might configure our
 network above:
 
-    gin.bind_parameter('supernet.num_layers', 5)
-    gin.bind_parameter('supernet.weight_decay', 1e-3)
+```
+gin.bind_parameter('supernet.num_layers', 5)
+gin.bind_parameter('supernet.weight_decay', 1e-3)
+```
 
 The `parse_config` function accepts configuration strings, which should consist
 of newline-separated statements of the form
 
-    configurable_name.parameter_name = value
+```
+configurable_name.parameter_name = value
+```
 
 Here `value` can be any valid Python literal value (lists, tuples, dicts,
-strings, etc., although note [configurable references](#configurable-references) below). A
-valid configuration string for the above network might be:
+strings, etc., although note [configurable references](#configurable-references)
+below). A valid configuration string for the above network might be:
 
-    supernet.num_layers = 5
-    supernet.weight_decay = 1e-3
+```
+supernet.num_layers = 5
+supernet.weight_decay = 1e-3
+```
 
 Gin's configuration syntax supports Python-style comments and line continuation
 (using '`\ `' or within a container), and in general parsing of values should
@@ -119,8 +179,10 @@ syntax is similar to the one used by `gin.bind_parameter` above. Note that a
 `ValueError` exception will be raised if there is no value bound to the
 parameter being queried.
 
-    num_layers = gin.query_parameter('supernet.num_layers')
-    weight_decay = gin.query_parameter('supernet.weight_decay')
+```
+num_layers = gin.query_parameter('supernet.num_layers')
+weight_decay = gin.query_parameter('supernet.weight_decay')
+```
 
 ### Configurable references
 
@@ -143,12 +205,14 @@ def train_model(network_fn, data, learning_rate, optimizer):
 
 We might configure this code in the Gin file as follows:
 
-    train_model.network_fn = @DNN()  # An instance of DNN is passed.
-    train_model.optimizer = @MomentumOptimizer  # The class itself is passed.
-    train_model.learning_rate = 0.001
+```
+train_model.network_fn = @DNN()  # An instance of DNN is passed.
+train_model.optimizer = @MomentumOptimizer  # The class itself is passed.
+train_model.learning_rate = 0.001
 
-    DNN.num_units = (2048, 2048, 2048)
-    MomentumOptimizer.momentum = 0.9
+DNN.num_units = (2048, 2048, 2048)
+MomentumOptimizer.momentum = 0.9
+```
 
 The above example demonstrates Gin's two flavors of configurable references.
 Because the `@DNN()` reference ends in `()`, the value supplied to
@@ -182,8 +246,9 @@ registers TensorFlow's `MomentumOptimizer` class with Gin, making it possible to
 reference it from configuration files and specify its parameters (as in the
 above example).
 
-Gin provides a [`tf.external_configurables` module](#importing-the-predefined-set-of-tf-configurable-objects) that can
-be imported to register a
+Gin provides a
+[`tf.external_configurables` module](#importing-the-predefined-set-of-tf-configurable-objects)
+that can be imported to register a
 [default set](https://github.com/google/gin-config/tree/master/gin//tf/external_configurables.py)
 of TensorFlow optimizers, losses, and learning rate decays with Gin.
 
@@ -204,13 +269,15 @@ necessary to uniquely identify the configurable. For instance, if
 `x.y.z.configurables`, we can bind parameters to the one in
 `a.b.c.configurables` in the following ways:
 
-    c.configurables.some_configurable.param = 'value'
-    b.c.configurables.some_configurable.param = 'value'
-    a.b.c.configurables.some_configurable.param = 'value'
+```
+c.configurables.some_configurable.param = 'value'
+b.c.configurables.some_configurable.param = 'value'
+a.b.c.configurables.some_configurable.param = 'value'
+```
 
 This syntax is supported wherever a configurable name can be supplied (so
-configurables can be disambiguated in a similar way when
-using [configurable references](#configurable-references)).
+configurables can be disambiguated in a similar way when using
+[configurable references](#configurable-references)).
 
 Just as a configurable name can be customized relative to the underlying
 function's name, the module used to disambiguate a configurable can also be
@@ -218,17 +285,21 @@ different from the module the configurable function is actually defined in. Both
 `gin.configurable` and `gin.external_configurable` accept a `module` keyword
 argument to specify the module Gin should use for disambiguation. For example:
 
-    @gin.configurable(module='custom.module.spec')
-    def my_network(images, num_outputs, num_layers=3, weight_decay=1e-4):
-      ...
+```
+@gin.configurable(module='custom.module.spec')
+def my_network(images, num_outputs, num_layers=3, weight_decay=1e-4):
+  ...
+```
 
 Alternatively, if both the name and module are being customized, the module can
 be specified as part of the name. For example, to call the above `'supernet'`
 instead of `'my_network'`:
 
-    @gin.configurable('custom.module.spec.supernet')
-    def my_network(images, num_outputs, num_layers=3, weight_decay=1e-4):
-      ...
+```
+@gin.configurable('custom.module.spec.supernet')
+def my_network(images, num_outputs, num_layers=3, weight_decay=1e-4):
+  ...
+```
 
 Users are encouraged to specify a custom module in cases where the true module
 name is not obvious from how the function is typically used. The custom module
@@ -237,8 +308,10 @@ should match typical Python usage. For example, the TensorFlow function
 would be better to specify an explicit module of `'tf.nn'`, in one of the
 following ways:
 
-    gin.external_configurable(tf.nn.relu, module='tf.nn')
-    gin.external_configurable(tf.nn.relu, 'tf.nn.relu')
+```
+gin.external_configurable(tf.nn.relu, module='tf.nn')
+gin.external_configurable(tf.nn.relu, 'tf.nn.relu')
+```
 
 ## Scoping
 
@@ -339,8 +412,10 @@ specified and referenced entirely from within the Gin config file), a call site
 can be wrapped with an "explicit" configuration scope, using the `config_scope`
 context manager:
 
-    with gin.config_scope('scope_name'):
-      some_configurable_function()
+```
+with gin.config_scope('scope_name'):
+  some_configurable_function()
+```
 
 Within the configuration file, the scope name can be prefixed as before to bind
 values only to a specific call site (in the above example, it suffices to
@@ -368,7 +443,9 @@ config. This can be done in two ways:
 When calling a configurable, you can mark any arg or kwarg as required by
 passing the `gin.REQUIRED` object:
 
-    my_network(images, gin.REQUIRED, num_layers=5, weight_decay=gin.REQUIRED)
+```
+my_network(images, gin.REQUIRED, num_layers=5, weight_decay=gin.REQUIRED)
+```
 
 The `REQUIRED` parameters will be checked at call time. If there are no Gin
 bindings supplied for these parameters, an error will be raised listing the
@@ -377,9 +454,11 @@ missing parameter bindings along with the configurable name that requires them.
 When defining a configurable, you can mark an argument as required by using
 `gin.REQUIRED` as its default value:
 
-    @gin.configurable
-    def run_training(model_dir=gin.REQUIRED, network=gin.REQUIRED, ...):
-      ...
+```
+@gin.configurable
+def run_training(model_dir=gin.REQUIRED, network=gin.REQUIRED, ...):
+  ...
+```
 
 When a function with parameters defaulting to `gin.REQUIRED` is called, either
 the caller or the current Gin configuration must supply a value for the
@@ -396,10 +475,12 @@ Most Gin files will depend on a number of modules having been imported (to
 register the configurable functions they provide with Gin). One approach is just
 to ensure that these modules are imported in the main binary file (often the
 same file that calls `parse_config`). However, Gin also allows modules to be
-imported from within a Gin file itself, making the dependencies more
-explicit. The import statement follows standard Python syntax:
+imported from within a Gin file itself, making the dependencies more explicit.
+The import statement follows standard Python syntax:
 
-    import some.module.spec
+```
+import some.module.spec
+```
 
 When the Gin file is parsed, any specified modules will be dynamically imported
 and their configurables registered.
@@ -412,7 +493,9 @@ into separate components (e.g., a "base" config, that is included and modified
 by other derived configs). Including another Gin file can be done with the
 following syntax:
 
-    include 'path/to/another/file.gin'
+```
+include 'path/to/another/file.gin'
+```
 
 The included file will be read and parsed prior to continuing with the current
 file (the one containing the include statement), as if the included file had
@@ -443,14 +526,18 @@ The macro can be "set" by binding a value to the `value` argument (within a
 scope acting as the macro's name). The "macro" function can then be referenced
 (with evaluation via "()") to retrieve the value. For example:
 
-    num_layers/macro.value = 10
-    network.num_layers = @num_layers/macro()
+```
+num_layers/macro.value = 10
+network.num_layers = @num_layers/macro()
+```
 
 Gin provides a simple syntactic sugar using `%` for macros. The above can also
 be written as:
 
-    num_layers = 10
-    network.num_layers = %num_layers
+```
+num_layers = 10
+network.num_layers = %num_layers
+```
 
 In other words, bindings without an argument name specified (i.e. without `.`)
 are interpreted as macros, and the macro can be referenced using `%` instead of
@@ -458,14 +545,14 @@ are interpreted as macros, and the macro can be referenced using `%` instead of
 
 Additional error-checking of macros (e.g., ensuring they are bound to a value)
 can be done by calling `gin.finalize()` after all configuration files have been
-parsed. This runs a provided [finalize hook](#finalizing-the-config) that validates all
-macros.
+parsed. This runs a provided [finalize hook](#finalizing-the-config) that
+validates all macros.
 
 Note: When using a macro to refer to an evaluated configurable reference
 (`@some_scope/some_fun()`), _each reference to the macro implies a separate call
-to the underlying configurable_ (the behavior is as if each macro
-were textually replaced by whatever the macro's value is set to). If you need
-the same **instance** of an object to be shared among multiple bindings, see
+to the underlying configurable_ (the behavior is as if each macro were textually
+replaced by whatever the macro's value is set to). If you need the same
+**instance** of an object to be shared among multiple bindings, see
 [singletons](#singletons) below.
 
 As with all other Gin bindings, the very last binding (across all parsed Gin
@@ -505,11 +592,15 @@ another_function.shared_object = %SHARED_OBJECT
 The `gin.constant` function can be used to define constants that will be
 accessible through the macro syntax described above. For example, in Python:
 
-    gin.constant('THE_ANSWER', 42)
+```
+gin.constant('THE_ANSWER', 42)
+```
 
 Then, in a Gin config file:
 
-    meaning.of_life = %THE_ANSWER
+```
+meaning.of_life = %THE_ANSWER
+```
 
 Note that any Python object can be used as the value of a constant (including
 objects not representable as Gin literals). Values will be stored until program
@@ -519,7 +610,9 @@ values that should have a limited lifetime.
 Optionally (but definitely encouraged), a disambiguating module may be prefixed
 onto the constant name. For instance:
 
-      gin.constant('some.modules.PI', 3.14159)
+```
+  gin.constant('some.modules.PI', 3.14159)
+```
 
 As with configurables, any (sufficiently long) suffix of the modules can be used
 to disambiguate the constant if there is a naming collision.
@@ -603,8 +696,8 @@ NetworkTrainer.train_steps = 1000000
 ```
 
 When used in conjunction with TensorFlow, Gin provides
-[`gin.tf.GinConfigSaverHook`](#saving-gins-operative-config-to-a-file-and-tensorboard) to automatically save this to
-a file (as well as summarize it to TensorBoard).
+[`gin.tf.GinConfigSaverHook`](#saving-gins-operative-config-to-a-file-and-tensorboard)
+to automatically save this to a file (as well as summarize it to TensorBoard).
 
 ## Experiments with multiple Gin files and extra command line bindings
 
@@ -615,40 +708,50 @@ config can be passed as individual bindings via command line flags.
 A recommended way to do this (when using Bazel and Abseil) is to create a folder
 with multiple Gin configs, then create a BUILD file containing:
 
-    filegroup(
-        name = "gin_files",
-        srcs = glob(["*.gin"]),
-        visibility = [":internal"],
-    )
+```
+filegroup(
+    name = "gin_files",
+    srcs = glob(["*.gin"]),
+    visibility = [":internal"],
+)
+```
 
 This filegroup can be used as a data dependency in the binaries:
 
-    data = ["//path/to/configs:gin_files",]
+```
+data = ["//path/to/configs:gin_files",]
+```
 
 In the binary file, one can define the following flags:
 
-    from absl import flags
+```
+from absl import flags
 
-    flags.DEFINE_multi_string(
-      'gin_file', None, 'List of paths to the config files.')
-    flags.DEFINE_multi_string(
-      'gin_param', None, 'Newline separated list of Gin parameter bindings.')
+flags.DEFINE_multi_string(
+  'gin_file', None, 'List of paths to the config files.')
+flags.DEFINE_multi_string(
+  'gin_param', None, 'Newline separated list of Gin parameter bindings.')
 
-    FLAGS = flags.FLAGS
+FLAGS = flags.FLAGS
+```
 
 and then use Gin to parse them:
 
-    gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
+```
+gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
+```
 
 Finally the binary file can be run as:
 
-    .../run_gin_eval \
-      --gin_file=$CONFIGS_PATH/cartpole_balance.gin \
-      --gin_file=$CONFIGS_PATH/base_dqn.gin \
-      --gin_file=$CONFIGS_PATH/eval.gin \
-      --gin_param='evaluate.num_episodes_eval = 10' \
-      --gin_param='evaluate.generate_videos = False' \
-      --gin_param='evaluate.eval_interval_secs = 60'
+```
+.../run_gin_eval \
+  --gin_file=$CONFIGS_PATH/cartpole_balance.gin \
+  --gin_file=$CONFIGS_PATH/base_dqn.gin \
+  --gin_file=$CONFIGS_PATH/eval.gin \
+  --gin_param='evaluate.num_episodes_eval = 10' \
+  --gin_param='evaluate.generate_videos = False' \
+  --gin_param='evaluate.eval_interval_secs = 60'
+```
 
 ## Gin's `gin.tf` package: TensorFlow specific functionality
 
@@ -662,8 +765,9 @@ TensorFlow specific functionality.
 Since it is common to want to configure built in TF functions or class, Gin
 provides a module that can be imported to make all basic TF optimizers, learning
 rate decays, and losses configurable (using `gin.external_configurable`). These
-can then be referenced through [configurable references](#configurable-references) in a Gin
-config file. To import the module, add
+can then be referenced through
+[configurable references](#configurable-references) in a Gin config file. To
+import the module, add
 
 ```python
 import gin.tf.external_configurables
@@ -675,10 +779,11 @@ alongside any other modules being imported for their Gin-configurable functions
 ### Saving Gin's operative config to a file and TensorBoard
 
 Gin provides `gin.tf.GinConfigSaverHook`: a `tf.train.SessionRunHook` that can
-save the [operative configuration](#retrieving-operative-parameter-values) to a file, as well as
-create a summary that will display the operative configuration in TensorBoard's
-"Text" tab. The resulting hook should be added to a `MonitoredSession`'s hooks.
-In distributed training mode, it should run only on the chief. For example:
+save the [operative configuration](#retrieving-operative-parameter-values) to a
+file, as well as create a summary that will display the operative configuration
+in TensorBoard's "Text" tab. The resulting hook should be added to a
+`MonitoredSession`'s hooks. In distributed training mode, it should run only on
+the chief. For example:
 
 ```python
 # Construct the hook. (The summarize_config parameter defaults to True.)

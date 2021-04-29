@@ -28,6 +28,38 @@ from absl.testing import absltest
 from gin import config
 
 
+_TEST_CONFIG_STR = """
+import gin.testdata.import_test_configurables
+
+configurable1.kwarg1 = \\
+  'a super duper extra double very wordy string that is just plain long'
+configurable1.kwarg3 = @configurable2
+configurable2.non_kwarg = 'ferret == domesticated polecat'
+ConfigurableClass.kwarg1 = 'statler'
+ConfigurableClass.kwarg2 = 'waldorf'
+ConfigurableSubclass.kwarg1 = 'waldorf'
+ConfigurableSubclass.kwarg3 = 'ferret'
+test/scopes/ConfigurableClass.kwarg2 = 'beaker'
+var_arg_fn.non_kwarg2 = {
+  'long': [
+    'nested', 'structure', ('that', 'will', 'span'),
+    'more', ('than', 1), 'line',
+  ]
+}
+var_arg_fn.any_name_is_ok = [%THE_ANSWER, %super/sweet, %pen_names]
+var_arg_fn.float_value = 2.718
+var_arg_fn.dict_value = {'success': True}
+
+RegisteredClassWithRegisteredMethods.param_a = 'a'
+RegisteredClassWithRegisteredMethods.param_b = 'b'
+RegisteredClassWithRegisteredMethods.registered_method1.arg = 3.1415
+pass_through.value = @RegisteredClassWithRegisteredMethods()
+
+super/sweet = 'lugduname'
+pen_names = ['Pablo Neruda', 'Voltaire', 'Snoop Lion']
+a.woolly.sheep.dolly.kwarg = 0
+"""
+
 _EXPECTED_OPERATIVE_CONFIG_STR = """
 import gin.testdata.import_test_configurables
 
@@ -70,6 +102,19 @@ woolly.sheep.dolly.kwarg = 0
 # Parameters for no_arg_fn:
 # ==============================================================================
 # None.
+
+# Parameters for pass_through:
+# ==============================================================================
+pass_through.value = @RegisteredClassWithRegisteredMethods()
+
+# Parameters for RegisteredClassWithRegisteredMethods:
+# ==============================================================================
+RegisteredClassWithRegisteredMethods.param_a = 'a'
+RegisteredClassWithRegisteredMethods.param_b = 'b'
+
+# Parameters for RegisteredClassWithRegisteredMethods.registered_method1:
+# ==============================================================================
+RegisteredClassWithRegisteredMethods.registered_method1.arg = 3.1415
 
 # Parameters for var_arg_fn:
 # ==============================================================================
@@ -121,6 +166,19 @@ ConfigurableSubclass.kwarg3 = 'ferret'
 # ==============================================================================
 woolly.sheep.dolly.kwarg = 0
 
+# Parameters for pass_through:
+# ==============================================================================
+pass_through.value = @RegisteredClassWithRegisteredMethods()
+
+# Parameters for RegisteredClassWithRegisteredMethods:
+# ==============================================================================
+RegisteredClassWithRegisteredMethods.param_a = 'a'
+RegisteredClassWithRegisteredMethods.param_b = 'b'
+
+# Parameters for RegisteredClassWithRegisteredMethods.registered_method1:
+# ==============================================================================
+RegisteredClassWithRegisteredMethods.registered_method1.arg = 3.1415
+
 # Parameters for var_arg_fn:
 # ==============================================================================
 var_arg_fn.any_name_is_ok = [%THE_ANSWER, %super/sweet, %pen_names]
@@ -134,6 +192,21 @@ var_arg_fn.non_kwarg2 = \\
               ('than', 1),
               'line']}
 """
+
+
+def call_operative_config_str_configurables():
+  fn1('mustelid')
+  configurable2(config.REQUIRED, kwarg1='I am supplied explicitly.')
+  ConfigurableClass()
+  ConfigurableSubclass()
+  with config.config_scope('test'):
+    with config.config_scope('scopes'):
+      ConfigurableClass()
+  var_arg_fn('non_kwarg1_value', config.REQUIRED)
+  instance = pass_through(config.REQUIRED)
+  instance.registered_method1()
+  no_arg_fn()
+  clone2()
 
 
 @config.configurable('configurable1')
@@ -340,7 +413,7 @@ configurable_external_named_tuple = config.external_configurable(
     NamedTuple, 'ExternalConfigurableNamedTuple')
 
 
-@config.configurable
+@config.register
 class ObjectSubclassWithoutInit:
   """A class that subclasses object but doesn't define its own __init__.
 
@@ -348,7 +421,7 @@ class ObjectSubclassWithoutInit:
   instantiate such a class from within Gin and bind it to something else.
   """
 
-  @config.configurable(module='ObjectSubclassWithoutInit')
+  @config.register
   def method(self, arg1='default'):
     return arg1
 
@@ -428,6 +501,38 @@ class ExternalConfigurableClassWithMetaAndNew(metaclass=MetaWithPostNewHook):
 
 external_configurable_class_with_meta_and_new = config.external_configurable(
     ExternalConfigurableClassWithMetaAndNew)
+
+
+@config.configurable
+def pass_through(value):
+  return value
+
+
+@config.register
+class RegisteredClassWithRegisteredMethods:
+
+  def __init__(self, param_a, param_b):
+    self.param_a = param_a
+    self.param_b = param_b
+
+  def unregistered_method(self, arg):
+    return arg
+
+  @config.register
+  def registered_method1(self, arg):
+    return arg
+
+  @config.register
+  def registered_method2(self, arg):
+    return arg
+
+
+@config.register(module='custom.module')
+class RegisteredClassWithCustomModule:
+
+  @config.register
+  def registered_method(self, arg):
+    return arg
 
 
 class ConfigTest(absltest.TestCase):
@@ -1166,48 +1271,12 @@ class ConfigTest(absltest.TestCase):
       ConfigurableClass()  # pylint: disable=no-value-for-parameter
 
   def testOperativeConfigStr(self):
-    config_str = """
-      import gin.testdata.import_test_configurables
-
-      configurable1.kwarg1 = \\
-        'a super duper extra double very wordy string that is just plain long'
-      configurable1.kwarg3 = @configurable2
-      configurable2.non_kwarg = 'ferret == domesticated polecat'
-      ConfigurableClass.kwarg1 = 'statler'
-      ConfigurableClass.kwarg2 = 'waldorf'
-      ConfigurableSubclass.kwarg1 = 'waldorf'
-      ConfigurableSubclass.kwarg3 = 'ferret'
-      test/scopes/ConfigurableClass.kwarg2 = 'beaker'
-      var_arg_fn.non_kwarg2 = {
-        'long': [
-          'nested', 'structure', ('that', 'will', 'span'),
-          'more', ('than', 1), 'line',
-        ]
-      }
-      var_arg_fn.any_name_is_ok = [%THE_ANSWER, %super/sweet, %pen_names]
-      var_arg_fn.float_value = 2.718
-      var_arg_fn.dict_value = {'success': True}
-
-      super/sweet = 'lugduname'
-      pen_names = ['Pablo Neruda', 'Voltaire', 'Snoop Lion']
-      a.woolly.sheep.dolly.kwarg = 0
-    """
+    config_str = _TEST_CONFIG_STR
     config.constant('THE_ANSWER', 42)
     config.parse_config(config_str)
     config.finalize()
 
-    fn1('mustelid')
-    # pylint: disable=no-value-for-parameter
-    configurable2(kwarg1='I am supplied explicitly.')
-    # pylint: enable=no-value-for-parameter
-    ConfigurableClass()
-    ConfigurableSubclass()
-    with config.config_scope('test'):
-      with config.config_scope('scopes'):
-        ConfigurableClass()
-    var_arg_fn('non_kwarg1_value')  # pylint: disable=no-value-for-parameter
-    no_arg_fn()
-    clone2()
+    call_operative_config_str_configurables()
 
     applied_config_lines = config.operative_config_str().splitlines()
     # See the definition of _EXPECTED_OPERATIVE_CONFIG_STR at top of file.
@@ -1215,32 +1284,7 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(applied_config_lines, expected_config_lines[1:])
 
   def testConfigStr(self):
-    config_str = """
-      import gin.testdata.import_test_configurables
-
-      configurable1.kwarg1 = \\
-        'a super duper extra double very wordy string that is just plain long'
-      configurable1.kwarg3 = @configurable2
-      configurable2.non_kwarg = 'ferret == domesticated polecat'
-      ConfigurableClass.kwarg1 = 'statler'
-      ConfigurableClass.kwarg2 = 'waldorf'
-      ConfigurableSubclass.kwarg1 = 'waldorf'
-      ConfigurableSubclass.kwarg3 = 'ferret'
-      test/scopes/ConfigurableClass.kwarg2 = 'beaker'
-      var_arg_fn.non_kwarg2 = {
-        'long': [
-          'nested', 'structure', ('that', 'will', 'span'),
-          'more', ('than', 1), 'line',
-        ]
-      }
-      var_arg_fn.any_name_is_ok = [%THE_ANSWER, %super/sweet, %pen_names]
-      var_arg_fn.float_value = 2.718
-      var_arg_fn.dict_value = {'success': True}
-
-      super/sweet = 'lugduname'
-      pen_names = ['Pablo Neruda', 'Voltaire', 'Snoop Lion']
-      a.woolly.sheep.dolly.kwarg = 0
-    """
+    config_str = _TEST_CONFIG_STR
     config.constant('THE_ANSWER', 42)
     config.parse_config(config_str)
     config.finalize()
@@ -1281,47 +1325,17 @@ class ConfigTest(absltest.TestCase):
                      {'kwarg1': 'base_kwarg1', 'kwarg2': 'base_kwarg2'})
 
   def testParsingOperativeConfigStrIsIdempotent(self):
-    config_str = """
-      configurable1.kwarg1 = \\
-        'a super duper extra double very wordy string that is just plain long'
-      configurable1.kwarg3 = @configurable2
-      configurable2.non_kwarg = 'ferret == domesticated polecat'
-      ConfigurableClass.kwarg1 = 'statler'
-      ConfigurableClass.kwarg2 = 'waldorf'
-      ConfigurableSubclass.kwarg1 = 'subclass_kwarg1'
-      ConfigurableSubclass.kwarg3 = 'subclass_kwarg3'
-      test/scopes/ConfigurableClass.kwarg2 = 'beaker'
-      var_arg_fn.non_kwarg2 = {
-        'long': [
-          'nested', 'structure', ('that', 'will', 'span'),
-          'more', ('than', 1), 'line',
-        ]
-      }
-      var_arg_fn.any_name_is_ok = [1, 2, 3]
-      var_arg_fn.float_value = 2.718
-      var_arg_fn.dict_value = {'success': True}
-    """
+    config_str = _TEST_CONFIG_STR
+    config.constant('THE_ANSWER', 42)
     config.parse_config(config_str)
 
-    def call_configurables():
-      fn1('mustelid')
-      # pylint: disable=no-value-for-parameter
-      configurable2(kwarg1='I am supplied explicitly.')
-      # pylint: enable=no-value-for-parameter
-      ConfigurableClass()
-      ConfigurableSubclass()
-      with config.config_scope('test'):
-        with config.config_scope('scopes'):
-          ConfigurableClass()
-      var_arg_fn('non_kwarg1_value')  # pylint: disable=no-value-for-parameter
-
-    call_configurables()
+    call_operative_config_str_configurables()
     operative_config_str = config.operative_config_str()
 
-    config.clear_config()
+    config.clear_config(clear_constants=False)
     config.parse_config(operative_config_str)
 
-    call_configurables()
+    call_operative_config_str_configurables()
     self.assertEqual(config.operative_config_str(), operative_config_str)
 
   def testAllowlist(self):
@@ -1345,6 +1359,61 @@ class ConfigTest(absltest.TestCase):
       config.bind_parameter('denylisted_configurable.denylisted', 0)
     with self.assertRaises(ValueError):
       config.bind_parameter('a/b/denylisted_configurable.denylisted', 0)
+
+  def testRegisteredClassWithRegisteredMethods(self):
+    config_str = """
+      RegisteredClassWithRegisteredMethods.param_a = 'a'
+      RegisteredClassWithRegisteredMethods.param_b = 'b'
+
+      RegisteredClassWithRegisteredMethods.registered_method1.arg = 1
+      RegisteredClassWithRegisteredMethods.registered_method2.arg = 2
+
+      pass_through.value = @RegisteredClassWithRegisteredMethods()
+    """
+    config.parse_config(config_str)
+
+    instance = pass_through(value=config.REQUIRED)
+    self.assertEqual(instance.param_a, 'a')
+    self.assertEqual(instance.param_b, 'b')
+    self.assertEqual(instance.registered_method1(), 1)
+    self.assertEqual(instance.registered_method2(), 2)
+
+  def testScopedRegisteredClassWithRegisteredMethods(self):
+    config_str = """
+      scope/RegisteredClassWithRegisteredMethods.param_a = 'a'
+      scope/RegisteredClassWithRegisteredMethods.param_b = 'b'
+
+      scope/RegisteredClassWithRegisteredMethods.registered_method1.arg = 1
+      scope/RegisteredClassWithRegisteredMethods.registered_method2.arg = 2
+
+      RegisteredClassWithRegisteredMethods.registered_method1.arg = None
+      RegisteredClassWithRegisteredMethods.registered_method2.arg = None
+
+      pass_through.value = @scope/RegisteredClassWithRegisteredMethods()
+    """
+    config.parse_config(config_str)
+
+    instance = pass_through(value=config.REQUIRED)
+    self.assertEqual(instance.param_a, 'a')
+    self.assertEqual(instance.param_b, 'b')
+    self.assertEqual(instance.registered_method1(), 1)
+    self.assertEqual(instance.registered_method2(), 2)
+
+  def testMustSpecifyClassNameForRegisteredMethods(self):
+    expected_message = (
+        r"Method 'registered_method2' referenced without class name "
+        r"'RegisteredClassWithRegisteredMethods'\.")
+    with self.assertRaisesRegex(ValueError, expected_message):
+      config.parse_config('registered_method2.arg = 2')
+
+  def testRegisterdClassWithCustomModuleAndRegisteredMethods(self):
+    config_str = """
+      custom.module.RegisteredClassWithCustomModule.registered_method.arg = 2
+      pass_through.value = @RegisteredClassWithCustomModule()
+    """
+    config.parse_config(config_str)
+    instance = pass_through(config.REQUIRED)
+    self.assertEqual(instance.registered_method(), 2)
 
   def testRequiredArgs(self):
     with self.assertRaisesRegex(RuntimeError, 'arg1.*arg2'):
