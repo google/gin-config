@@ -508,12 +508,19 @@ def pass_through(value):
   return value
 
 
+@config.register(module='custom')
+def not_a_method():
+  pass
+
+
 @config.register
 class RegisteredClassWithRegisteredMethods:
 
   def __init__(self, param_a, param_b):
     self.param_a = param_a
     self.param_b = param_b
+
+  not_a_method = not_a_method
 
   def unregistered_method(self, arg):
     return arg

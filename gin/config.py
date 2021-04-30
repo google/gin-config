@@ -227,7 +227,23 @@ def _ensure_wrappability(fn):
 def _find_registered_methods(cls, selector):
   """Finds methods in `cls` that have been wrapped or registered with Gin."""
   registered_methods = {}
-  for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+
+  def is_method(maybe_method):
+    # Python 3 has no notion of an unbound method. To avoid a scenario where a
+    # previously registered function is assigned as a class attribute (e.g., the
+    # default value of a dataclass field) and considered a method here, we
+    # require that the function's __module__ is the same as that of the class,
+    # its __name__ matches the name it is accessible under via the class, and
+    # its __qualname__ contains the class name as `Class.name`.
+    if (inspect.isfunction(maybe_method) and
+        maybe_method.__module__ == cls.__module__ and
+        getattr(cls, maybe_method.__name__, None) == maybe_method):
+      qualname_parts = maybe_method.__qualname__.split('.')
+      if len(qualname_parts) > 1 and qualname_parts[-2] == cls.__name__:
+        return True
+    return False
+
+  for name, method in inspect.getmembers(cls, predicate=is_method):
     if method in _INVERSE_REGISTRY:
       method_info = _INVERSE_REGISTRY[method]
       if method_info.module != method.__module__:
