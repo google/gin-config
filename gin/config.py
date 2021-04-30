@@ -1752,7 +1752,7 @@ def operative_config_str(max_line_length=80, continuation_indent=4):
 def config_str(max_line_length=80, continuation_indent=4):
   """Retrieve the interpreted configuration as a config string.
 
-  This is not the _operative configuration_, in that it may include parameter
+  This is not the _operative configuration_, in that it includes parameter
   values which are unused by by the program.
 
   Args:
@@ -2348,22 +2348,10 @@ def find_unknown_references_hook(config):
           _raise_unknown_reference_error(maybe_unknown, additional_msg)
 
 
-def markdown(string):
-  """Convert a config string to Markdown format.
+def markdownify_operative_config_str(string):
+  """Convert an operative config string to markdown format."""
 
-  This can be useful for rendering the config string (or operative config
-  string) in dashboards that support Markdown format. Comments in the config
-  string are left as Markdown headers; other lines are indented by four spaces
-  to indicate they are code blocks.
-
-  Args:
-    string: The configuration string to convert to Markdown format. This should
-      be the output of `gin.config_str()` or `gin.operative_config_str()`.
-
-  Returns:
-    The given configuration string in a Markdown-compatible format.
-  """
-
+  # TODO: Total hack below. Implement more principled formatting.
   def process(line):
     """Convert a single line to markdown format."""
     if not line.startswith('#'):

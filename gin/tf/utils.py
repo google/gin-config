@@ -100,7 +100,7 @@ class GinConfigSaverHook(tf.estimator.SessionRunHook):
       f.write(config_str)
 
     if self._summarize_config:
-      md_config_str = config.markdown(config_str)
+      md_config_str = config.markdownify_operative_config_str(config_str)
       summary_metadata = summary_pb2.SummaryMetadata()
       summary_metadata.plugin_data.plugin_name = 'text'
       summary_metadata.plugin_data.content = b'{}'
