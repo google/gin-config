@@ -2255,6 +2255,22 @@ class ConfigTest(absltest.TestCase):
           'kwarg2': 456,
       })
 
+  def testGetBindingsReferences(self):
+    # `resolve_references=True`
+    config_str = """
+      configurable1.non_kwarg = @configurable2
+    """
+    config.parse_config(config_str)
+    self.assertDictEqual(config.get_bindings('configurable1'), {
+        'non_kwarg': configurable2,
+    })
+
+    # `resolve_references=False`
+    config.parse_config(config_str)
+    non_kwarg = config.get_bindings(
+        'configurable1', resolve_references=False)['non_kwarg']
+    self.assertIsInstance(non_kwarg, config.ConfigurableReference)
+
   def testGetBindingsUnknown(self):
     expected_msg = 'Could not find .* in the Gin registry'
     with self.assertRaisesRegex(ValueError, expected_msg):
