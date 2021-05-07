@@ -55,4 +55,6 @@ def try_with_location(location):
   try:
     yield
   except Exception as exception:  # pylint: disable=broad-except
+    if isinstance(exception, SyntaxError):
+      raise  # SyntaxErrors already include location information.
     augment_exception_message_and_reraise(exception, _format_location(location))

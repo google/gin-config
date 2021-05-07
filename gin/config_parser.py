@@ -82,13 +82,46 @@ class BindingStatement(typing.NamedTuple):
 
 
 class ImportStatement(typing.NamedTuple):
+  """Represents an import statement."""
   module: str
+  is_from: bool
+  alias: Optional[str]
   location: Location
+
+  def format(self):
+    if self.is_from:
+      from_module, import_name = self.module.rsplit('.', maxsplit=1)
+      output = f'from {from_module} import {import_name}'
+    else:
+      output = f'import {self.module}'
+    if self.alias:
+      output += f' as {self.alias}'
+    return output
+
+  def bound_name(self):
+    if self.alias:
+      return self.alias
+    parts = self.module.split('.')
+    return parts[-1] if self.is_from else parts[0]
+
+  def partial_path(self):
+    if self.alias:
+      parts = self.module.split('.')
+      parts[-1] = self.alias
+      return '.'.join(parts)
+    elif self.is_from:
+      return self.module
+    else:  # not self.is_from and not self.alias
+      return self.module.split('.')[0]
 
 
 class IncludeStatement(typing.NamedTuple):
   filename: str
   location: Location
+
+
+class NamespaceStatement:
+  pass
 
 
 class ConfigParser(object):
@@ -194,9 +227,8 @@ class ConfigParser(object):
     binding_key_or_keyword = self._parse_selector()
     statement = None
     if self._current_token.string != '=':
-      if binding_key_or_keyword == 'import':
-        module = self._parse_selector(scoped=False)
-        statement = ImportStatement(module, stmt_loc)
+      if binding_key_or_keyword in ('import', 'from'):
+        statement = self._parse_import(binding_key_or_keyword, stmt_loc)
       elif binding_key_or_keyword == 'include':
         str_loc = self._current_location()
         success, filename = self._maybe_parse_basic_type()
@@ -278,6 +310,19 @@ class ConfigParser(object):
       location = self._current_location()
     raise SyntaxError(msg, location)
 
+  def _expect(self, expected, err_msg):
+    """Check that the current token is `expected`, otherwise raise `err_msg`."""
+    if isinstance(expected, str):
+      actual = self._current_token.string
+    elif isinstance(expected, int):
+      actual = self._current_token.type
+    if actual != expected:
+      actual_type_name = tokenize.tok_name[self._current_token.type]
+      actual_value = self._current_token.string
+      received = f'  Got {actual_type_name} = {actual_value}.'
+      self._raise_syntax_error(err_msg + received)
+    self._advance_one_token()
+
   def _parse_dict_item(self):
     key = self.parse_value()
     if self._current_token.string != ':':
@@ -344,6 +389,33 @@ class ConfigParser(object):
       self._raise_syntax_error('Malformatted scope or selector.', location)
 
     return scoped_selector
+
+  def _parse_identifier(self):
+    identifier = self._current_token.string
+    if not IDENTIFIER_RE.match(identifier):
+      self._raise_syntax_error('Invalid identifier name.')
+    self._advance()
+    return identifier
+
+  def _parse_import(self, keyword: str, statement_location: Location):
+    """Parses a single import statement."""
+    alias = None
+    if keyword == 'import':
+      module = self._parse_selector(scoped=False)
+    elif keyword == 'from':
+      module = self._parse_selector(scoped=False)
+      self._expect('import', "Expected 'import'.")
+      submodule = self._parse_identifier()
+      module = f'{module}.{submodule}'
+    if self._current_token.string == 'as':
+      self._advance_one_token()
+      alias = self._parse_identifier()
+
+    return ImportStatement(
+        module=module,
+        is_from=keyword == 'from',
+        alias=alias,
+        location=statement_location)
 
   def _maybe_parse_container(self):
     """Try to parse a container type (dict, list, or tuple)."""

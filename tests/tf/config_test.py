@@ -54,6 +54,30 @@ class TFConfigTest(tf.test.TestCase):
     value = pass_through(gin.REQUIRED)
     self.assertIsInstance(value, np.float64)
 
+  def testDynamicallyRegisterSymbols(self):
+    config_str = """
+      from __gin__ import dynamic_registration
+
+      import tensorflow as tf
+
+      import __main__ as tf_config_test
+
+      tf.keras.optimizers.SGD.learning_rate = 1.0
+      tf_config_test.pass_through.arg = @tf.keras.optimizers.SGD()
+    """
+    gin.parse_config(config_str)
+    sgd = pass_through(gin.REQUIRED)
+    self.assertIsInstance(sgd, tf.keras.optimizers.SGD)
+    self.assertEqual(sgd.learning_rate.numpy(), 1.0)
+    configurable_sgd = gin.get_configurable(tf.keras.optimizers.SGD)
+    self.assertEqual(configurable_sgd().learning_rate.numpy(), 1.0)
+    self.assertIs(gin.get_configurable('SGD'), configurable_sgd)
+    self.assertIs(gin.get_configurable('optimizers.SGD'), configurable_sgd)
+    self.assertIs(
+        gin.get_configurable('keras.optimizers.SGD'), configurable_sgd)
+    self.assertIs(
+        gin.get_configurable('tf.keras.optimizers.SGD'), configurable_sgd)
+
 
 if __name__ == '__main__':
   tf.test.main()

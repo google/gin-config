@@ -14,9 +14,10 @@
 # limitations under the License.
 
 import ast
-import collections
 import pprint
 import random
+import typing
+from typing import Any, Dict, Sequence, Tuple
 
 from absl.testing import absltest
 
@@ -68,13 +69,13 @@ def _generate_nested_value(max_depth=4, max_container_size=5):
   return random.choice(generators)()
 
 
-class _TestConfigurableReference(
-    collections.namedtuple('_TestConfigurableReference', ['name', 'evaluate'])):
-  pass
+class _TestConfigurableReference(typing.NamedTuple):
+  name: str
+  evaluate: bool
 
 
-class _TestMacro(collections.namedtuple('_TestMacro', ['name'])):
-  pass
+class _TestMacro(typing.NamedTuple):
+  name: str
 
 
 class _TestParserDelegate(config_parser.ParserDelegate):
@@ -93,6 +94,12 @@ class _TestParserDelegate(config_parser.ParserDelegate):
     return _TestMacro(scoped_name)
 
 
+class _ParsedConfig(typing.NamedTuple):
+  config: Dict[Tuple[str, str], Dict[str, Any]]
+  imports: Sequence[config_parser.ImportStatement]
+  includes: Sequence[str]
+
+
 class ConfigParserTest(absltest.TestCase):
 
   def _parse_value(self, literal):
@@ -109,7 +116,6 @@ class ConfigParserTest(absltest.TestCase):
 
   def _parse_config(self,
                     config_str,
-                    only_bindings=True,
                     generate_unknown_reference_errors=False):
     parser = config_parser.ConfigParser(
         config_str, _TestParserDelegate(generate_unknown_reference_errors))
@@ -122,13 +128,11 @@ class ConfigParserTest(absltest.TestCase):
         scope, selector, arg_name, value, _ = statement
         config.setdefault((scope, selector), {})[arg_name] = value
       elif isinstance(statement, config_parser.ImportStatement):
-        imports.append(statement.module)
+        imports.append(statement)
       elif isinstance(statement, config_parser.IncludeStatement):
         includes.append(statement.filename)
 
-    if only_bindings:
-      return config
-    return config, imports, includes
+    return _ParsedConfig(config=config, imports=imports, includes=includes)
 
   def testParseRandomLiterals(self):
     # Try a bunch of random nested Python structures and make sure we can parse
@@ -316,7 +320,7 @@ class ConfigParserTest(absltest.TestCase):
       scope/name = %macro
       scope/fn.param = %a.b  # Periods in macros are OK (e.g. for constants).
       a/scope/fn.param = 4
-    """)
+    """).config
     self.assertEqual(config['', 'a'], {'': 0})
     self.assertEqual(config['', 'a1.B2'], {'c': 1})
     self.assertEqual(config['scope', 'name'], {'': _TestMacro('macro')})
@@ -342,9 +346,52 @@ class ConfigParserTest(absltest.TestCase):
     config_str = """
       import some.module.name  # Comment afterwards ok.
       import another.module.name
+      import some.module.name as alias  # Comment afterwards ok.
+      from another.module import name
+      from some.module import name as alias  # Comment.
     """
-    _, imports, _ = self._parse_config(config_str, only_bindings=False)
-    self.assertEqual(imports, ['some.module.name', 'another.module.name'])
+    imports = self._parse_config(config_str).imports
+
+    i = 0
+    self.assertEqual(imports[i].module, 'some.module.name')
+    self.assertFalse(imports[i].is_from)
+    self.assertIsNone(imports[i].alias)
+    self.assertEqual(imports[i].format(), 'import some.module.name')
+    self.assertEqual(imports[i].bound_name(), 'some')
+    self.assertEqual(imports[i].partial_path(), 'some')
+
+    i += 1
+    self.assertEqual(imports[i].module, 'another.module.name')
+    self.assertFalse(imports[i].is_from)
+    self.assertIsNone(imports[i].alias)
+    self.assertEqual(imports[i].format(), 'import another.module.name')
+    self.assertEqual(imports[i].bound_name(), 'another')
+    self.assertEqual(imports[i].partial_path(), 'another')
+
+    i += 1
+    self.assertEqual(imports[i].module, 'some.module.name')
+    self.assertFalse(imports[i].is_from)
+    self.assertEqual(imports[i].alias, 'alias')
+    self.assertEqual(imports[i].format(), 'import some.module.name as alias')
+    self.assertEqual(imports[i].bound_name(), 'alias')
+    self.assertEqual(imports[i].partial_path(), 'some.module.alias')
+
+    i += 1
+    self.assertEqual(imports[i].module, 'another.module.name')
+    self.assertTrue(imports[i].is_from)
+    self.assertIsNone(imports[i].alias)
+    self.assertEqual(imports[i].format(), 'from another.module import name')
+    self.assertEqual(imports[i].bound_name(), 'name')
+    self.assertEqual(imports[i].partial_path(), 'another.module.name')
+
+    i += 1
+    self.assertEqual(imports[i].module, 'some.module.name')
+    self.assertTrue(imports[i].is_from)
+    self.assertEqual(imports[i].alias, 'alias')
+    self.assertEqual(imports[i].format(),
+                     'from some.module import name as alias')
+    self.assertEqual(imports[i].bound_name(), 'alias')
+    self.assertEqual(imports[i].partial_path(), 'some.module.alias')
 
     with self.assertRaises(SyntaxError):
       self._parse_config('import a.0b')
@@ -356,7 +403,7 @@ class ConfigParserTest(absltest.TestCase):
       include 'a/file/path.gin'
       include "another/" "path.gin"
     """
-    _, _, includes = self._parse_config(config_str, only_bindings=False)
+    includes = self._parse_config(config_str).includes
     self.assertEqual(includes, ['a/file/path.gin', 'another/path.gin'])
 
     with self.assertRaises(SyntaxError):
@@ -391,8 +438,7 @@ class ConfigParserTest(absltest.TestCase):
 
       # And at the end!
     """
-    config, imports, includes = self._parse_config(
-        config_str, only_bindings=False)
+    parsed_config = self._parse_config(config_str)
 
     expected_config = {
         ('a/b/c', 'd'): {
@@ -405,8 +451,9 @@ class ConfigParserTest(absltest.TestCase):
             'goodness': ['a', 'moose']
         }
     }
-    self.assertEqual(config, expected_config)
+    self.assertEqual(parsed_config.config, expected_config)
 
+    imports = [imp.module for imp in parsed_config.imports]
     expected_imports = [
         'some.module.with.configurables', 'another.module.providing.configs',
         'module'
@@ -414,7 +461,7 @@ class ConfigParserTest(absltest.TestCase):
     self.assertEqual(imports, expected_imports)
 
     expected_includes = ['another/gin/file.gin', 'path/to/config/file.gin']
-    self.assertEqual(includes, expected_includes)
+    self.assertEqual(parsed_config.includes, expected_includes)
 
 
 if __name__ == '__main__':

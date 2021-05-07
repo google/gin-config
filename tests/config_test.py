@@ -513,6 +513,10 @@ def not_a_method():
   pass
 
 
+def unregistered_function(arg):
+  return arg
+
+
 @config.register
 class RegisteredClassWithRegisteredMethods:
 
@@ -624,6 +628,117 @@ class ConfigTest(absltest.TestCase):
                      'Searched config paths:')
     with self.assertRaisesRegex(IOError, err_msg_regex):
       config.parse_config_file(config_file)
+
+  def testDynamicRegistrationImport(self):
+    config_str = """
+      from __gin__ import dynamic_registration
+
+      import gin.testdata.dynamic_registration
+
+      gin.testdata.dynamic_registration.function.arg = 2
+    """
+    config.parse_config(config_str)
+    bindings = config.get_bindings('gin.testdata.dynamic_registration.function')
+    self.assertEqual(bindings, {'arg': 2})
+
+  def testDynamicRegistrationImportAs(self):
+    config_str = """
+      from __gin__ import dynamic_registration
+
+      import gin.testdata.dynamic_registration as dr
+
+      dr.Class.a = 1
+      dr.function.arg = 2
+      dr.Class.b = @dr.function()
+    """
+    config.parse_config(config_str)
+    bindings = config.get_bindings('gin.testdata.dynamic_registration.Class')
+    self.assertEqual(bindings, {'a': 1, 'b': 2})
+
+  def testDynamicRegistrationFromImport(self):
+    config_str = """
+      from __gin__ import dynamic_registration
+
+      from gin.testdata import dynamic_registration
+
+      dynamic_registration.Class.a = 1
+      dynamic_registration.function.arg = 2
+      dynamic_registration.Class.b = @dynamic_registration.function()
+    """
+    config.parse_config(config_str)
+    bindings = config.get_bindings('gin.testdata.dynamic_registration.Class')
+    self.assertEqual(bindings, {'a': 1, 'b': 2})
+
+  def testDynamicRegistrationFromImportAs(self):
+    config_str = """
+      from __gin__ import dynamic_registration
+
+      from gin.testdata import dynamic_registration as dr
+
+      dr.Class.a = 1
+      dr.function.arg = 2
+      dr.Class.b = @dr.function()
+    """
+    config.parse_config(config_str)
+    bindings = config.get_bindings('gin.testdata.dynamic_registration.Class')
+    self.assertEqual(bindings, {'a': 1, 'b': 2})
+
+  def testDynamicRegistrationMacro(self):
+    config_str = """
+      from __gin__ import dynamic_registration
+
+      from gin.testdata import dynamic_registration
+
+      MACRO_VALUE = 1
+
+      dynamic_registration.Class.a = %MACRO_VALUE
+      dynamic_registration.function.arg = 2
+      dynamic_registration.Class.b = @dynamic_registration.function()
+    """
+    config.parse_config(config_str)
+    bindings = config.get_bindings('gin.testdata.dynamic_registration.Class')
+    self.assertEqual(bindings, {'a': 1, 'b': 2})
+
+  def testDynamicRegistrationImportMain(self):
+    config_str = """
+      from __gin__ import dynamic_registration
+
+      import __main__  # __main__ is this file (config_test.py).
+
+      from gin.testdata import dynamic_registration
+
+      dynamic_registration.function.arg = 10
+      __main__.pass_through.value = @dynamic_registration.function()
+    """
+    config.parse_config(config_str)
+    self.assertEqual(pass_through(config.REQUIRED), 10)
+
+  def testDynamicRegistrationImportMainAndRegister(self):
+    config_str = """
+      from __gin__ import dynamic_registration
+
+      import __main__ as config_test  # __main__ is this file (config_test.py).
+
+      config_test.unregistered_function.arg = 'test'
+    """
+    config.parse_config(config_str)
+    configurable_fn = config.get_configurable(unregistered_function)
+    self.assertEqual(configurable_fn(config.REQUIRED), 'test')
+
+  def testDynamicRegistrationLateEnablingError(self):
+    config_str = """
+      import __main__  # __main__ is this file (config_test.py).
+
+      from gin.testdata import dynamic_registration
+
+      from __gin__ import dynamic_registration
+    """
+    expected_msg = (
+        'Dynamic registration should be enabled before any other modules are '
+        "imported.\n\nAlready imported: \\['import __main__', 'from "
+        "gin\\.testdata import dynamic_registration'\\].")
+    with self.assertRaisesRegex(SyntaxError, expected_msg):
+      config.parse_config(config_str)
 
   def testExplicitParametersOverrideGin(self):
     config_str = """
@@ -1345,6 +1460,23 @@ class ConfigTest(absltest.TestCase):
     call_operative_config_str_configurables()
     self.assertEqual(config.operative_config_str(), operative_config_str)
 
+  def testParsingImportsIsIdempotentUpToSorting(self):
+    config_str = """
+      from __gin__ import dynamic_registration  # Ignored in config_str...
+      import gin.testdata.import_test_configurables
+      import __main__ as main
+      from gin import testdata
+      from gin.testdata import dynamic_registration as dr
+    """
+    config.parse_config(config_str)
+    expected_config_str = '\n'.join([
+        'import __main__ as main',
+        'from gin import testdata',
+        'from gin.testdata import dynamic_registration as dr',
+        'import gin.testdata.import_test_configurables',
+    ])
+    self.assertEqual(config.config_str().strip(), expected_config_str)
+
   def testAllowlist(self):
     config.bind_parameter('allowlisted_configurable.allowlisted', 0)
     self.assertEqual(allowlisted_configurable(), (0, None))
@@ -1705,8 +1837,9 @@ class ConfigTest(absltest.TestCase):
       }
     """
     config.parse_config(config_str)
-    macros = list(config.iterate_references(config._CONFIG, to=config.macro))
-    self.assertLen(macros, 3)
+    macros_iterator = config.iterate_references(
+        config._CONFIG, to=config.get_configurable(config.macro))
+    self.assertLen(list(macros_iterator), 3)
 
   def testInteractiveMode(self):
     @config.configurable('duplicate_fn')
@@ -2073,7 +2206,9 @@ class ConfigTest(absltest.TestCase):
     config_str = """
       configurable1.non_kwarg = 'kwarg1'
       configurable1.kwarg2 = 123
-      ConfigurableClass.kwarg1 = 'okie dokie'
+      ConfigurableClass.kwarg1 = @pass_through()
+
+      pass_through.value = 'okie dokie'
     """
     config.parse_config(config_str)
 
@@ -2127,6 +2262,16 @@ class ConfigTest(absltest.TestCase):
 
     with self.assertRaisesRegex(ValueError, expected_msg):
       config.get_bindings(lambda x: None)
+
+  def testGetConfigurable(self):
+    self.assertIs(config.get_configurable(pass_through), pass_through)
+    self.assertIs(
+        config.get_configurable(pass_through.__wrapped__), pass_through)
+    self.assertIs(config.get_configurable('pass_through'), pass_through)
+
+    expected_msg = 'Could not find .* in the Gin registry'
+    with self.assertRaisesRegex(ValueError, expected_msg):
+      config.get_configurable('unknown.selector')
 
 
 if __name__ == '__main__':

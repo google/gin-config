@@ -90,7 +90,6 @@ import inspect
 import logging
 import os
 import pprint
-import sys
 import threading
 import traceback
 import typing
@@ -138,6 +137,109 @@ class _ScopeManager(threading.local):
     self._active_scopes.pop()
 
 
+class _GinBuiltins:
+
+  def __init__(self):
+    self.macro = macro
+    self.constant = _retrieve_constant
+
+
+class ParseContext:
+  """Encapsulates context for parsing a single file."""
+
+  def __init__(self):
+    self._imports = []
+    self._symbol_table = {}
+    self._symbol_source = {}
+    self._dynamic_registration = False
+
+  @property
+  def imports(self):
+    return self._imports
+
+  def _enable_dynamic_registration(self):
+    self._dynamic_registration = True
+    self._symbol_table['gin'] = _GinBuiltins()
+    self._symbol_source['gin'] = None
+
+  def process_import(self, statement: config_parser.ImportStatement):
+    """Processes the given `ImportStatement`."""
+    if statement.is_from and statement.module.startswith('__gin__.'):
+      if statement.alias:
+        raise SyntaxError('__gin__ imports do not support `as` aliasing.',
+                          statement.location)
+      _, feature = statement.module.split('.', maxsplit=1)
+      if feature == 'dynamic_registration':
+        if self._imports:
+          existing_imports = [stmt.format() for stmt in self._imports]
+          raise SyntaxError(
+              f'Dynamic registration should be enabled before any other modules '
+              f'are imported.\n\nAlready imported: {existing_imports}.',
+              statement.location)
+        self._enable_dynamic_registration()
+      else:
+        raise SyntaxError(  # pylint: disable=raising-format-tuple
+            "Unrecognized __gin__ feature '{feature}'.", statement.location)
+    else:
+      fromlist = [''] if statement.is_from or statement.alias else None
+      module = __import__(statement.module, fromlist=fromlist)
+      if self._dynamic_registration:
+        name = statement.bound_name()
+        self._symbol_table[name] = module
+        self._symbol_source[name] = statement
+      self._imports.append(statement)
+
+  def resolve_selector(self, selector):
+    """Resolves the given `selector` using this context's symbol table."""
+    not_found = object()
+
+    symbol, *attr_names = selector.split('.')
+    result = self._symbol_table.get(symbol, not_found)
+    if result is not_found:
+      raise NameError(f"'{symbol}' was not provided by an import statement.")
+
+    for attr_name in attr_names:
+      attr = getattr(result, attr_name, not_found)
+      if attr is not_found:
+        raise AttributeError(
+            f"Couldn't resolve selector {selector}; {result} has no attribute "
+            f'{attr_name}.')
+      result = attr
+
+    return result
+
+  def get_configurable(self, selector):
+    """Get a configurable matching the given `selector`."""
+    if self._dynamic_registration:
+      fn_or_cls = self.resolve_selector(selector)
+      configurable_ = _inverse_lookup(fn_or_cls)
+      if configurable_ is None:  # It's unregistered, register it dynamically.
+        symbol, *attrs, name = selector.split('.')
+        source = self._symbol_source[symbol]
+        if source is None:  # This happens for Gin "builtins" like `macro`.
+          module = symbol
+        else:
+          module = '.'.join([source.partial_path(), *attrs])
+        register(name, module=module)(fn_or_cls)
+        configurable_ = _INVERSE_REGISTRY[fn_or_cls]
+      return configurable_
+    else:  # No dynamic registration, just look up the selector.
+      return _REGISTRY.get_match(selector)
+
+
+def _parse_context():
+  return _PARSE_CONTEXTS[-1]
+
+
+@contextlib.contextmanager
+def _parse_scope():
+  _PARSE_CONTEXTS.append(ParseContext())
+  try:
+    yield _parse_context()
+  finally:
+    _PARSE_CONTEXTS.pop()
+
+
 # Maintains the registry of configurable functions and classes.
 _REGISTRY = selector_map.SelectorMap()
 
@@ -153,8 +255,8 @@ _RENAMED_SELECTORS = {}
 # `parse_config`, but doesn't include any functions' default argument values.
 _CONFIG = {}
 
-# Keeps a set of module names that were dynamically imported via config files.
-_IMPORTED_MODULES = set()
+# Keeps a set of ImportStatements that were imported via config files.
+_IMPORTS = set()
 
 # Maps `(scope, selector)` tuples to all configurable parameter values used
 # during program execution (including default argument values).
@@ -175,6 +277,9 @@ _INTERACTIVE_MODE = False
 # Keeps track of constants created via gin.constant, to both prevent duplicate
 # definitions and to avoid writing them to the operative config.
 _CONSTANTS = selector_map.SelectorMap()
+
+# Parse contexts, providing file-isolated import/symbol tables.
+_PARSE_CONTEXTS = [ParseContext()]
 
 # Keeps track of singletons created via the singleton configurable.
 _SINGLETONS = {}
@@ -224,6 +329,16 @@ def _ensure_wrappability(fn):
   return fn
 
 
+def _inverse_lookup(fn_or_cls, allow_decorators=False):
+  unwrapped = inspect.unwrap(fn_or_cls, stop=lambda f: f in _INVERSE_REGISTRY)
+  configurable_ = _INVERSE_REGISTRY.get(unwrapped)
+  if configurable_ is not None:
+    wrapped_and_wrapper = (configurable_.wrapped, configurable_.wrapper)
+    if allow_decorators or fn_or_cls in wrapped_and_wrapper:
+      return configurable_
+  return None
+
+
 def _find_registered_methods(cls, selector):
   """Finds methods in `cls` that have been wrapped or registered with Gin."""
   registered_methods = {}
@@ -260,10 +375,9 @@ def _find_registered_methods(cls, selector):
       _REGISTRY.pop(old_selector)
       _REGISTRY[new_selector] = method_info
       _INVERSE_REGISTRY[method] = method_info
-      registered_methods[name] = method_info.fn_or_cls
+      registered_methods[name] = method_info.wrapper
     else:
-      unwrapped = inspect.unwrap(method, stop=lambda f: f in _INVERSE_REGISTRY)
-      if unwrapped in _INVERSE_REGISTRY:
+      if _inverse_lookup(method, allow_decorators=True):
         registered_methods[name] = method
   return registered_methods
 
@@ -413,7 +527,8 @@ def _decorate_fn_or_cls(decorator,
 
 
 class Configurable(typing.NamedTuple):
-  fn_or_cls: Callable[..., Any]
+  wrapper: Callable[..., Any]
+  wrapped: Callable[..., Any]
   name: str
   module: str
   allowlist: Optional[Sequence[str]]
@@ -438,7 +553,7 @@ class ConfigurableReference:
     scoped_selector_parts = self._scoped_selector.split('/')
     self._scopes = scoped_selector_parts[:-1]
     self._selector = scoped_selector_parts[-1]
-    self._configurable = _REGISTRY.get_match(self._selector)
+    self._configurable = _parse_context().get_configurable(self._selector)
     if not self._configurable:
       _raise_unknown_reference_error(self)
 
@@ -455,7 +570,7 @@ class ConfigurableReference:
 
     self._scoped_configurable_fn = _decorate_fn_or_cls(
         reference_decorator,
-        self.configurable.fn_or_cls,
+        self.configurable.wrapper,
         self.configurable.selector,
         avoid_class_mutation=True,
         decorate_methods=True)
@@ -505,7 +620,7 @@ class ConfigurableReference:
   def __repr__(self):
     # Check if this reference is a macro or constant, i.e. @.../macro() or
     # @.../constant(). Only macros and constants correspond to the %... syntax.
-    configurable_fn = self._configurable.fn_or_cls
+    configurable_fn = self._configurable.wrapped
     if configurable_fn in (macro, _retrieve_constant) and self._evaluate:
       return '%' + '/'.join(self._scopes)
     maybe_parens = '()' if self._evaluate else ''
@@ -661,7 +776,7 @@ class ParsedBindingKey(typing.NamedTuple):
       err_str = 'Invalid type for binding_key: {}.'
       raise ValueError(err_str.format(type(binding_key)))
 
-    configurable_ = _REGISTRY.get_match(selector)
+    configurable_ = _parse_context().get_configurable(selector)
     if not configurable_:
       raise ValueError("No configurable matching '{}'.".format(selector))
 
@@ -670,7 +785,7 @@ class ParsedBindingKey(typing.NamedTuple):
       err_str = "Method '{}' referenced without class name '{}'."
       raise ValueError(err_str.format(selector, class_name))
 
-    if not _might_have_parameter(configurable_.fn_or_cls, arg_name):
+    if not _might_have_parameter(configurable_.wrapper, arg_name):
       err_str = "Configurable '{}' doesn't have a parameter named '{}'."
       raise ValueError(err_str.format(selector, arg_name))
 
@@ -763,7 +878,7 @@ def clear_config(clear_constants=False):
     _CONSTANTS.clear()  # Clear then redefine constants (re-adding bindings).
     for name, value in saved_constants.items():
       constant(name, value)
-  _IMPORTED_MODULES.clear()
+  _IMPORTS.clear()
   _OPERATIVE_CONFIG.clear()
 
 
@@ -1071,10 +1186,42 @@ def config_scope(name_or_scope):
     _SCOPE_MANAGER.exit_scope()
 
 
-def get_bindings(
-    fn_or_cls: Union[str, Callable[..., Any], Type[Any]],
-) -> Dict[str, Any]:
+_FnOrClsOrSelector = Union[Callable[..., Any], Type[Any], str]
+
+
+def _as_selector(fn_or_cls_or_selector: _FnOrClsOrSelector) -> str:
+  """Finds the complete selector corresponding to `fn_or_cls`."""
+  if isinstance(fn_or_cls_or_selector, str):
+    # Resolve partial selector -> full selector
+    selector = _REGISTRY.get_match(fn_or_cls_or_selector)
+    if selector:
+      selector = selector.selector
+  else:
+    configurable_ = _inverse_lookup(fn_or_cls_or_selector)
+    selector = configurable_.selector if configurable_ else None
+
+  if selector is None:
+    raise ValueError(
+        f'Could not find {fn_or_cls_or_selector} in the Gin registry.')
+
+  return selector
+
+
+def _get_bindings(selector: str) -> Dict[str, Any]:
+  """Returns the bindings for the current full selector."""
+  scope_components = current_scope()
+  new_kwargs = {}
+  for i in range(len(scope_components) + 1):
+    partial_scope_str = '/'.join(scope_components[:i])
+    new_kwargs.update(_CONFIG.get((partial_scope_str, selector), {}))
+  return new_kwargs
+
+
+def get_bindings(fn_or_cls_or_selector: _FnOrClsOrSelector) -> Dict[str, Any]:
   """Returns the bindings associated with the given configurable.
+
+  Any configurable references in the bindings will be resolved during the call
+  (and evaluated references will be evaluated).
 
   Example:
 
@@ -1087,35 +1234,34 @@ def get_bindings(
   Note: The scope in which `get_bindings` is called will be used.
 
   Args:
-    fn_or_cls: Configurable function, class or selector `str`.
+    fn_or_cls_or_selector: Configurable function, class or selector `str`.
 
   Returns:
     The bindings kwargs injected by Gin.
   """
-  if isinstance(fn_or_cls, str):
-    # Resolve partial selector -> full selector
-    selector = _REGISTRY.get_match(fn_or_cls)
-    if selector:
-      selector = selector.selector
-  else:
-    unwrapped = inspect.unwrap(fn_or_cls, stop=lambda x: x in _INVERSE_REGISTRY)
-    configurable_ = _INVERSE_REGISTRY.get(unwrapped)
-    selector = configurable_.selector if configurable_ else None
-
-  if selector is None:
-    raise ValueError(f'Could not find {fn_or_cls} in the Gin registry.')
-
-  return _get_bindings(selector)
+  return copy.deepcopy(_get_bindings(_as_selector(fn_or_cls_or_selector)))
 
 
-def _get_bindings(selector: str) -> Dict[str, Any]:
-  """Returns the bindings for the current full selector."""
-  scope_components = current_scope()
-  new_kwargs = {}
-  for i in range(len(scope_components) + 1):
-    partial_scope_str = '/'.join(scope_components[:i])
-    new_kwargs.update(_CONFIG.get((partial_scope_str, selector), {}))
-  return new_kwargs
+def get_configurable(
+    fn_or_cls_or_selector: _FnOrClsOrSelector) -> Callable[..., Any]:
+  """Returns the configurable version of `fn_or_cls_or_selector`.
+
+  If a function or class has been registered with Gin, Gin's configurable
+  version (which will have all relevant Gin bindings applied) can be obtained by
+  calling this function with any of the following:
+
+    - The original function or class (the "non-configurable" version);
+    - The configurable function or class (so this function is effectively a
+      no-op for functions annotated with `@gin.configurable`);
+    - A selector string that specifies the function or class.
+
+  Args:
+    fn_or_cls_or_selector: Configurable function, class or selector `str`.
+
+  Returns:
+    The configurable function or class corresponding to `fn_or_cls_or_selector`.
+  """
+  return _REGISTRY[_as_selector(fn_or_cls_or_selector)].wrapper
 
 
 def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
@@ -1360,7 +1506,8 @@ def _make_configurable(fn_or_cls,
       decorator, fn_or_cls, selector, avoid_class_mutation=avoid_class_mutation)
 
   configurable_info = Configurable(
-      decorated_fn_or_cls,
+      wrapper=decorated_fn_or_cls,
+      wrapped=fn_or_cls,
       name=name,
       module=module,
       allowlist=allowlist,
@@ -1675,14 +1822,15 @@ def _config_str(configuration_object,
   # span multiple lines. Imports are first, followed by macros, and finally all
   # other bindings sorted in alphabetical order by configurable name.
   formatted_statements = [
-      'import {}'.format(module) for module in sorted(_IMPORTED_MODULES)
+      statement.format()
+      for statement in sorted(_IMPORTS, key=lambda s: s.module)
   ]
   if formatted_statements:
     formatted_statements.append('')
 
   macros = {}
   for (scope, selector), config in configuration_object.items():
-    if _REGISTRY[selector].fn_or_cls == macro:  # pylint: disable=comparison-with-callable
+    if _REGISTRY[selector].wrapped == macro:  # pylint: disable=comparison-with-callable
       macros[scope, selector] = config
   if macros:
     formatted_statements.append('# Macros:')
@@ -1696,9 +1844,7 @@ def _config_str(configuration_object,
   sorted_items = sorted(configuration_object.items(), key=sort_key)
   for (scope, selector), config in sorted_items:
     configurable_ = _REGISTRY[selector]
-
-    fn = configurable_.fn_or_cls
-    if fn == macro or fn == _retrieve_constant:  # pylint: disable=comparison-with-callable
+    if configurable_.wrapped in (macro, _retrieve_constant):  # pylint: disable=comparison-with-callable
       continue
 
     minimal_selector = _minimal_selector(configurable_)
@@ -1843,8 +1989,8 @@ def parse_config(bindings, skip_unknown=False):
       to unknown configurables will cause errors if they are present in a
       binding that is not itself skipped due to an unknown configurable. This
       can also be a list of configurable names: any unknown configurables that
-        do not match an item in the list will still cause errors. Note that
-        bindings for known configurables will always be parsed.
+      do not match an item in the list will still cause errors. Note that
+      bindings for known configurables will always be parsed.
 
   Returns:
     includes: List of ParsedConfigFileIncludesAndImports describing the result
@@ -1861,46 +2007,54 @@ def parse_config(bindings, skip_unknown=False):
   parser = config_parser.ConfigParser(bindings, ParserDelegate(skip_unknown))
   includes = []
   imports = []
-  for statement in parser:
-    if isinstance(statement, config_parser.BindingStatement):
-      scope, selector, arg_name, value, location = statement
-      if not arg_name:
-        macro_name = '{}/{}'.format(scope, selector) if scope else selector
-        with utils.try_with_location(location):
-          bind_parameter((macro_name, 'gin.macro', 'value'), value)
-        continue
-      if not _should_skip(selector, skip_unknown):
-        with utils.try_with_location(location):
-          bind_parameter((scope, selector, arg_name), value)
-    elif isinstance(statement, config_parser.ImportStatement):
-      imports.append(statement.module)
-      if skip_unknown:
-        try:
-          __import__(statement.module)
-          _IMPORTED_MODULES.add(statement.module)
-        except ImportError:
-          tb_len = len(traceback.extract_tb(sys.exc_info()[2]))
-          log_str = ('Skipping import of unknown module `%s` '
-                     '(skip_unknown=True).')
-          log_args = [statement.module]
-          if tb_len > 1:
-            # In case the error comes from a nested import (i.e. the module is
-            # available, but it imports some unavailable module), print the
-            # traceback to avoid confusion.
-            log_str += '\n%s'
-            log_args.append(traceback.format_exc())
-          logging.info(log_str, *log_args)
-      else:
+  with _parse_scope() as parse_context:
+    for statement in parser:
+      if isinstance(statement, config_parser.BindingStatement):
+        scope, selector, arg_name, value, location = statement
+        if not arg_name:
+          macro_name = '{}/{}'.format(scope, selector) if scope else selector
+          with utils.try_with_location(location):
+            bind_parameter((macro_name, 'gin.macro', 'value'), value)
+          continue
+        if not _should_skip(selector, skip_unknown):
+          with utils.try_with_location(location):
+            bind_parameter((scope, selector, arg_name), value)
+      elif isinstance(statement, config_parser.ImportStatement):
         with utils.try_with_location(statement.location):
-          __import__(statement.module)
-        _IMPORTED_MODULES.add(statement.module)
-    elif isinstance(statement, config_parser.IncludeStatement):
-      with utils.try_with_location(statement.location):
-        nested_includes = parse_config_file(statement.filename, skip_unknown)
-        includes.append(nested_includes)
-    else:
-      raise AssertionError('Unrecognized statement type {}.'.format(statement))
+          try:
+            parse_context.process_import(statement)
+          except ImportError as e:
+            if not skip_unknown:
+              raise
+            _print_unknown_import_message(statement, e)
+      elif isinstance(statement, config_parser.IncludeStatement):
+        with utils.try_with_location(statement.location):
+          nested_includes = parse_config_file(statement.filename, skip_unknown)
+          includes.append(nested_includes)
+      else:
+        raise AssertionError(
+            'Unrecognized statement type {}.'.format(statement))
+    # Update recorded imports. Using the context's recorded imports ignores any
+    # `from __gin __ ...` statements used to enable e.g. dynamic registration.
+    imports.extend(statement.module for statement in parse_context.imports)
+    _IMPORTS.update(parse_context.imports)
   return includes, imports
+
+
+def _print_unknown_import_message(statement, exception):
+  """Prints a properly formatted info message when skipping unknown imports."""
+  log_str = 'Skipping import of unknown module `%s` (skip_unknown=True).'
+  log_args = [statement.module]
+  imported_modules = statement.module.split('.')
+  exception_modules = exception.name.split('.')
+  modules_match = imported_modules[:len(exception_modules)] == exception_modules
+  if not modules_match:
+    # In case the error comes from a nested import (i.e. the module is
+    # available, but it imports some unavailable module), print the traceback to
+    # avoid confusion.
+    log_str += '\n%s'
+    log_args.append(traceback.format_exc())
+  logging.info(log_str, *log_args)
 
 
 def register_file_reader(*args):
@@ -2205,7 +2359,7 @@ def iterate_references(config, to=None):
   """
   for value in _iterate_flattened_values(config):
     if isinstance(value, ConfigurableReference):
-      if to is None or value.configurable.fn_or_cls == to:
+      if to is None or value.configurable.wrapper == to:
         yield value
 
 
@@ -2220,19 +2374,19 @@ def validate_reference(ref, require_bindings=True, require_evaluation=False):
     raise ValueError(err_str.format(ref, config_str()))
 
 
-@configurable(module='gin')
+@register(module='gin')
 def macro(value):
   """A Gin macro."""
   return value
 
 
-@configurable('constant', module='gin')
+@register('constant', module='gin')
 def _retrieve_constant():
   """Fetches and returns a constant from the _CONSTANTS map."""
   return _CONSTANTS[current_scope_str()]
 
 
-@configurable(module='gin')
+@register(module='gin')
 def singleton(constructor):
   return singleton_value(current_scope_str(), constructor)
 
@@ -2329,7 +2483,7 @@ def constants_from_enum(cls=None, module=None):
 
 @register_finalize_hook
 def validate_macros_hook(config):
-  for ref in iterate_references(config, to=macro):
+  for ref in iterate_references(config, to=get_configurable(macro)):
     validate_reference(ref, require_evaluation=True)
 
 
