@@ -17,10 +17,11 @@
 
 import abc
 import ast
-import collections
 import io
 import re
 import tokenize
+import typing
+from typing import Any, Optional
 
 from gin import selector_map
 from gin import utils
@@ -65,21 +66,29 @@ class ParserDelegate(metaclass=abc.ABCMeta):
     pass
 
 
-class BindingStatement(
-    collections.namedtuple(
-        'BindingStatement',
-        ['scope', 'selector', 'arg_name', 'value', 'location'])):
-  pass
+class Location(typing.NamedTuple):
+  filename: Optional[str]
+  line_num: int
+  char_num: Optional[int]
+  line_content: str
 
 
-class ImportStatement(
-    collections.namedtuple('ImportStatement', ['module', 'location'])):
-  pass
+class BindingStatement(typing.NamedTuple):
+  scope: str
+  selector: str
+  arg_name: str
+  value: Any
+  location: Location
 
 
-class IncludeStatement(
-    collections.namedtuple('IncludeStatement', ['filename', 'location'])):
-  pass
+class ImportStatement(typing.NamedTuple):
+  module: str
+  location: Location
+
+
+class IncludeStatement(typing.NamedTuple):
+  filename: str
+  location: Location
 
 
 class ConfigParser(object):
@@ -127,14 +136,6 @@ class ConfigParser(object):
         config.setdefault(scoped_configurable_name, {})[parameter_name] = value
       f.close()
   """
-
-  _TOKEN_FIELDS = ['kind', 'value', 'begin', 'end', 'line']
-
-  class Token(collections.namedtuple('Token', _TOKEN_FIELDS)):
-
-    @property
-    def line_number(self):
-      return self.begin[0]
 
   def __init__(self, string_or_filelike, parser_delegate):
     """Construct the parser.
@@ -185,14 +186,14 @@ class ConfigParser(object):
       `None` if no more statements can be parsed (EOF reached).
     """
     self._skip_whitespace_and_comments()
-    if self._current_token.kind == tokenize.ENDMARKER:
+    if self._current_token.type == tokenize.ENDMARKER:
       return None
 
     # Save off location, but ignore char_num for any statement-level errors.
     stmt_loc = self._current_location(ignore_char_num=True)
     binding_key_or_keyword = self._parse_selector()
     statement = None
-    if self._current_token.value != '=':
+    if self._current_token.string != '=':
       if binding_key_or_keyword == 'import':
         module = self._parse_selector(scoped=False)
         statement = ImportStatement(module, stmt_loc)
@@ -212,10 +213,10 @@ class ConfigParser(object):
 
     assert statement, 'Internal parsing error.'
 
-    if (self._current_token.kind != tokenize.NEWLINE and
-        self._current_token.kind != tokenize.ENDMARKER):
+    if (self._current_token.type != tokenize.NEWLINE and
+        self._current_token.type != tokenize.ENDMARKER):
       self._raise_syntax_error('Expected newline.')
-    elif self._current_token.kind == tokenize.NEWLINE:
+    elif self._current_token.type == tokenize.NEWLINE:
       self._advance_one_token()
 
     return statement
@@ -237,25 +238,25 @@ class ConfigParser(object):
     self._raise_syntax_error('Unable to parse value.')
 
   def _advance_one_token(self):
-    self._current_token = ConfigParser.Token(*next(self._token_generator))
+    self._current_token = next(self._token_generator)
     # Certain symbols (e.g., "$") cause ERRORTOKENs on all preceding space
     # characters. Find the first non-space or non-ERRORTOKEN token.
-    while (self._current_token.kind == tokenize.ERRORTOKEN and
-           self._current_token.value in ' \t'):
-      self._current_token = ConfigParser.Token(*next(self._token_generator))
+    while (self._current_token.type == tokenize.ERRORTOKEN and
+           self._current_token.string in ' \t'):
+      self._current_token = next(self._token_generator)
 
   def advance_one_line(self):
     """Advances to next line."""
 
-    current_line = self._current_token.line_number
-    while current_line == self._current_token.line_number:
-      self._current_token = ConfigParser.Token(*next(self._token_generator))
+    current_line = self._current_token.start[0]  # Line number.
+    while current_line == self._current_token.start[0]:
+      self._current_token = next(self._token_generator)
 
   def _skip_whitespace_and_comments(self):
     skippable_token_kinds = [
         tokenize.COMMENT, tokenize.NL, tokenize.INDENT, tokenize.DEDENT
     ]
-    while self._current_token.kind in skippable_token_kinds:
+    while self._current_token.type in skippable_token_kinds:
       self._advance_one_token()
 
   def _advance(self):
@@ -263,10 +264,14 @@ class ConfigParser(object):
     self._skip_whitespace_and_comments()
 
   def _current_location(self, ignore_char_num=False):
-    line_num, char_num = self._current_token.begin
+    line_num, char_num = self._current_token.start
     if ignore_char_num:
       char_num = None
-    return (self._filename, line_num, char_num, self._current_token.line)
+    return Location(
+        filename=self._filename,
+        line_num=line_num,
+        char_num=char_num,
+        line_content=self._current_token.line)
 
   def _raise_syntax_error(self, msg, location=None):
     if not location:
@@ -275,7 +280,7 @@ class ConfigParser(object):
 
   def _parse_dict_item(self):
     key = self.parse_value()
-    if self._current_token.value != ':':
+    if self._current_token.string != ':':
       self._raise_syntax_error("Expected ':'.")
     self._advance()
     value = self.parse_value()
@@ -299,20 +304,20 @@ class ConfigParser(object):
     Raises:
       SyntaxError: If the scope or selector is malformatted.
     """
-    if self._current_token.kind != tokenize.NAME:
+    if self._current_token.type != tokenize.NAME:
       self._raise_syntax_error('Unexpected token.')
 
-    begin_line_num = self._current_token.begin[0]
-    begin_char_num = self._current_token.begin[1]
+    begin_line_num = self._current_token.start[0]
+    begin_char_num = self._current_token.start[1]
     end_char_num = self._current_token.end[1]
     line = self._current_token.line
 
     selector_parts = []
     # This accepts an alternating sequence of NAME and '/' or '.' tokens.
     step_parity = 0
-    while (step_parity == 0 and self._current_token.kind == tokenize.NAME or
-           step_parity == 1 and self._current_token.value in ('/', '.')):
-      selector_parts.append(self._current_token.value)
+    while (step_parity == 0 and self._current_token.type == tokenize.NAME or
+           step_parity == 1 and self._current_token.string in ('/', '.')):
+      selector_parts.append(self._current_token.string)
       step_parity = not step_parity
       end_char_num = self._current_token.end[1]
       self._advance_one_token()
@@ -347,19 +352,19 @@ class ConfigParser(object):
         '(': (')', tuple, self.parse_value),
         '[': (']', list, self.parse_value)
     }
-    if self._current_token.value in bracket_types:
-      open_bracket = self._current_token.value
+    if self._current_token.string in bracket_types:
+      open_bracket = self._current_token.string
       close_bracket, type_fn, parse_item = bracket_types[open_bracket]
       self._advance()
 
       values = []
       saw_comma = False
-      while self._current_token.value != close_bracket:
+      while self._current_token.string != close_bracket:
         values.append(parse_item())
-        if self._current_token.value == ',':
+        if self._current_token.string == ',':
           saw_comma = True
           self._advance()
-        elif self._current_token.value != close_bracket:
+        elif self._current_token.string != close_bracket:
           self._raise_syntax_error("Expected ',' or '%s'." % close_bracket)
 
       # If it's just a single value enclosed in parentheses without a trailing
@@ -376,17 +381,17 @@ class ConfigParser(object):
     """Try to parse a basic type (str, bool, number)."""
     token_value = ''
     # Allow a leading dash to handle negative numbers.
-    if self._current_token.value == '-':
-      token_value += self._current_token.value
+    if self._current_token.string == '-':
+      token_value += self._current_token.string
       self._advance()
 
     basic_type_tokens = [tokenize.NAME, tokenize.NUMBER, tokenize.STRING]
-    continue_parsing = self._current_token.kind in basic_type_tokens
+    continue_parsing = self._current_token.type in basic_type_tokens
     if not continue_parsing:
       return False, None
 
     while continue_parsing:
-      token_value += self._current_token.value
+      token_value += self._current_token.string
 
       try:
         value = ast.literal_eval(token_value)
@@ -394,16 +399,16 @@ class ConfigParser(object):
         err_str = "{}\n    Failed to parse token '{}'"
         self._raise_syntax_error(err_str.format(e, token_value))
 
-      was_string = self._current_token.kind == tokenize.STRING
+      was_string = self._current_token.type == tokenize.STRING
       self._advance()
-      is_string = self._current_token.kind == tokenize.STRING
+      is_string = self._current_token.type == tokenize.STRING
       continue_parsing = was_string and is_string
 
     return True, value
 
   def _maybe_parse_configurable_reference(self):
     """Try to parse a configurable reference (@[scope/name/]fn_name[()])."""
-    if self._current_token.value != '@':
+    if self._current_token.string != '@':
       return False, None
 
     location = self._current_location()
@@ -411,10 +416,10 @@ class ConfigParser(object):
     scoped_name = self._parse_selector(allow_periods_in_scope=True)
 
     evaluate = False
-    if self._current_token.value == '(':
+    if self._current_token.string == '(':
       evaluate = True
       self._advance()
-      if self._current_token.value != ')':
+      if self._current_token.string != ')':
         self._raise_syntax_error("Expected ')'.")
       self._advance_one_token()
     self._skip_whitespace_and_comments()
@@ -426,7 +431,7 @@ class ConfigParser(object):
 
   def _maybe_parse_macro(self):
     """Try to parse an macro (%scope/name)."""
-    if self._current_token.value != '%':
+    if self._current_token.string != '%':
       return False, None
 
     location = self._current_location()
