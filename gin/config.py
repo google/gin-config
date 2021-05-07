@@ -1773,7 +1773,7 @@ class ParsedConfigFileIncludesAndImports(typing.NamedTuple):
   includes: Sequence['ParsedConfigFileIncludesAndImports']
 
 
-def parse_config(bindings, skip_unknown=False):
+def parse_config(bindings, skip_unknown=False, with_scope=''):
   """Parse a file, string, or list of strings containing parameter bindings.
 
   Parses parameter binding strings to set up the global configuration.  Once
@@ -1864,6 +1864,8 @@ def parse_config(bindings, skip_unknown=False):
   for statement in parser:
     if isinstance(statement, config_parser.BindingStatement):
       scope, selector, arg_name, value, location = statement
+      if with_scope:
+          scope = '{}/{}'.format(with_scope, scope) if scope else with_scope
       if not arg_name:
         macro_name = '{}/{}'.format(scope, selector) if scope else selector
         with utils.try_with_location(location):
