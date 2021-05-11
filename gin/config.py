@@ -1217,7 +1217,10 @@ def _get_bindings(selector: str) -> Dict[str, Any]:
   return new_kwargs
 
 
-def get_bindings(fn_or_cls_or_selector: _FnOrClsOrSelector) -> Dict[str, Any]:
+def get_bindings(
+    fn_or_cls_or_selector: _FnOrClsOrSelector,
+    resolve_references: bool = True,
+) -> Dict[str, Any]:
   """Returns the bindings associated with the given configurable.
 
   Any configurable references in the bindings will be resolved during the call
@@ -1235,11 +1238,18 @@ def get_bindings(fn_or_cls_or_selector: _FnOrClsOrSelector) -> Dict[str, Any]:
 
   Args:
     fn_or_cls_or_selector: Configurable function, class or selector `str`.
+    resolve_references: Whether or not references (and macros) should be
+       resolved. If `False`, the output may contain instances of Gin's
+       `ConfigurableReference` class.
 
   Returns:
     The bindings kwargs injected by Gin.
   """
-  return copy.deepcopy(_get_bindings(_as_selector(fn_or_cls_or_selector)))
+  bindings_kwargs = _get_bindings(_as_selector(fn_or_cls_or_selector))
+  if resolve_references:
+    return copy.deepcopy(bindings_kwargs)
+  else:
+    return bindings_kwargs
 
 
 def get_configurable(
