@@ -142,6 +142,7 @@ class _GinBuiltins:
   def __init__(self):
     self.macro = macro
     self.constant = _retrieve_constant
+    self.singleton = singleton
 
 
 class ParseContext:

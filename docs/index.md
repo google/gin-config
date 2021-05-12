@@ -567,21 +567,21 @@ A single instance of an object can be shared among multiple bindings using the
 `singleton` configurable function. For example:
 
 ```
-shared_object_name/singleton.constructor = @callable
+shared_object_name/gin.singleton.constructor = @callable
 
-some_function.shared_object = @shared_object_name/singleton()
-another_function.shared_object = @shared_object_name/singleton()
+some_function.shared_object = @shared_object_name/gin.singleton()
+another_function.shared_object = @shared_object_name/gin.singleton()
 ```
 
 In the above example, the scope ("shared_object_name") is used as an identifier
-for the singleton; the first time the `@shared_object_name/singleton()` is
+for the singleton; the first time the `@shared_object_name/gin.singleton()` is
 called, it will in turn call `callable` and cache the result. Subsequent calls
-to `@shared_object_name/singleton()` will reuse the cached value. This can be
-used with macros:
+to `@shared_object_name/gin.singleton()` will reuse the cached value. This can
+be used with macros:
 
 ```
-SHARED_OBJECT = @shared_object_name/singleton()
-shared_object_name/singleton.constructor = @callable
+SHARED_OBJECT = @shared_object_name/gin.singleton()
+shared_object_name/gin.singleton.constructor = @callable
 
 some_function.shared_object = %SHARED_OBJECT
 another_function.shared_object = %SHARED_OBJECT

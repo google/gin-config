@@ -2081,6 +2081,31 @@ class ConfigTest(absltest.TestCase):
       with self.assertRaisesRegex(ValueError, expected):
         ConfigurableClass()
 
+  def testSingletonsWithDynamicRegistration(self):
+    config_str = """
+      from __gin__ import dynamic_registration
+
+      import gin.testdata.dynamic_registration as dynamic_registration
+
+      CLASS = @class/gin.singleton()
+      class/gin.singleton.constructor = @dynamic_registration.Class
+
+      dynamic_registration.Class.a = 3
+      dynamic_registration.Class.b = 7
+
+      scope_1/dynamic_registration.function.arg = %CLASS
+      scope_2/dynamic_registration.function.arg = %CLASS
+    """
+    config.parse_config(config_str)
+
+    f = config.get_configurable('dynamic_registration.function')
+    with config.config_scope('scope_1'):
+      c1 = f()
+
+    with config.config_scope('scope_2'):
+      c2 = f()
+    self.assertIs(c1, c2)
+
   def testQueryParameter(self):
     config.bind_parameter('allowlisted_configurable.allowlisted', 0)
     value = config.query_parameter('allowlisted_configurable.allowlisted')
