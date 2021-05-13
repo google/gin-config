@@ -1660,6 +1660,25 @@ class ConfigTest(absltest.TestCase):
           'test_required_allowlist',
           allowlist=['arg2'])
 
+  def testRequiredInConfigHookNoOverride(self):
+    config.parse_config("""
+       required_args.arg2 = %gin.REQUIRED
+       required_args.kwarg2 = None
+    """)
+    expected_msg = (
+        r'required_args\.arg2 set to `%gin\.REQUIRED` but not subsequently '
+        r'overridden.')
+    with self.assertRaisesRegex(ValueError, expected_msg):
+      config.finalize()
+
+  def testRequiredInConfigHookWithOverride(self):
+    config.parse_config("""
+       required_args.arg2 = %gin.REQUIRED
+       required_args.kwarg2 = None
+       required_args.arg2 = 'valid override'
+    """)
+    config.finalize()
+
   def testKwOnlyArgs(self):
     config_str = """
       fn_with_kw_only_args.arg1 = 'arg1'

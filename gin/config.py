@@ -301,6 +301,8 @@ _LOCATION_PREFIXES = ['']
 
 # Value to represent required parameters.
 REQUIRED = object()
+# Add it to constants.
+_CONSTANTS['gin.REQUIRED'] = REQUIRED
 
 
 def _find_class_construction_fn(cls):
@@ -874,6 +876,7 @@ def clear_config(clear_constants=False):
   _SINGLETONS.clear()
   if clear_constants:
     _CONSTANTS.clear()
+    _CONSTANTS['gin.REQUIRED'] = REQUIRED
   else:
     saved_constants = _CONSTANTS.copy()
     _CONSTANTS.clear()  # Clear then redefine constants (re-adding bindings).
@@ -2498,6 +2501,11 @@ def validate_macros_hook(config):
     validate_reference(ref, require_evaluation=True)
 
 
+def _format_binding_key(scope, selector, param_name):
+  min_selector = _REGISTRY.minimal_selector(selector)
+  return f"{scope}{'/' if scope else ''}{min_selector}.{param_name}"
+
+
 @register_finalize_hook
 def find_unknown_references_hook(config):
   """Hook to find/raise errors for references to unknown configurables."""
@@ -2506,11 +2514,24 @@ def find_unknown_references_hook(config):
     for param_name, param_value in param_bindings.items():
       for maybe_unknown in _iterate_flattened_values(param_value):
         if isinstance(maybe_unknown, _UnknownConfigurableReference):
-          scope_str = scope + '/' if scope else ''
-          min_selector = _REGISTRY.minimal_selector(selector)
-          binding_key = '{}{}.{}'.format(scope_str, min_selector, param_name)
+          binding_key = _format_binding_key(scope, selector, param_name)
           additional_msg = additional_msg_fmt.format(binding_key)
           _raise_unknown_reference_error(maybe_unknown, additional_msg)
+
+
+@register_finalize_hook
+def find_missing_overrides_hook(config):
+  """Hook to find/raise errors for config bindings marked REQUIRED."""
+  for (scope, selector), param_bindings in config.items():
+    for param_name, param_value in param_bindings.items():
+      if isinstance(param_value, ConfigurableReference):
+        if param_value.configurable.wrapped == _retrieve_constant:  # pylint: disable=comparison-with-callable
+          # Call the scoped _retrieve_constant() to get the constant value.
+          constant_value = param_value.scoped_configurable_fn()
+          if constant_value is REQUIRED:
+            binding_key = _format_binding_key(scope, selector, param_name)
+            fmt = '{} set to `%gin.REQUIRED` but not subsequently overridden.'
+            raise ValueError(fmt.format(binding_key))
 
 
 def markdown(string):
