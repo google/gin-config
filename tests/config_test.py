@@ -34,25 +34,37 @@ import gin.testdata.import_test_configurables
 configurable1.kwarg1 = \\
   'a super duper extra double very wordy string that is just plain long'
 configurable1.kwarg3 = @configurable2
-configurable2.non_kwarg = 'ferret == domesticated polecat'
-ConfigurableClass.kwarg1 = 'statler'
-ConfigurableClass.kwarg2 = 'waldorf'
-ConfigurableSubclass.kwarg1 = 'waldorf'
-ConfigurableSubclass.kwarg3 = 'ferret'
-test/scopes/ConfigurableClass.kwarg2 = 'beaker'
-var_arg_fn.non_kwarg2 = {
-  'long': [
-    'nested', 'structure', ('that', 'will', 'span'),
-    'more', ('than', 1), 'line',
-  ]
-}
-var_arg_fn.any_name_is_ok = [%THE_ANSWER, %super/sweet, %pen_names]
-var_arg_fn.float_value = 2.718
-var_arg_fn.dict_value = {'success': True}
 
-RegisteredClassWithRegisteredMethods.param_a = 'a'
-RegisteredClassWithRegisteredMethods.param_b = 'b'
+configurable2.non_kwarg = 'ferret == domesticated polecat'
+
+ConfigurableClass:
+  kwarg1 = 'statler'
+  kwarg2 = 'waldorf'
+
+ConfigurableSubclass:
+  kwarg1 = 'waldorf'
+  kwarg3 = 'ferret'
+
+test/scopes/ConfigurableClass:
+  kwarg2 = 'beaker'
+
+var_arg_fn:
+  non_kwarg2 = {
+    'long': [
+      'nested', 'structure', ('that', 'will', 'span'),
+      'more', ('than', 1), 'line',
+    ]
+  }
+  any_name_is_ok = [%THE_ANSWER, %super/sweet, %pen_names]
+  float_value = 2.718
+  dict_value = {'success': True}
+
+RegisteredClassWithRegisteredMethods:
+  param_a = 'a'
+  param_b = 'b'
+
 RegisteredClassWithRegisteredMethods.registered_method1.arg = 3.1415
+
 pass_through.value = @RegisteredClassWithRegisteredMethods()
 
 super/sweet = 'lugduname'
@@ -755,6 +767,18 @@ class ConfigTest(absltest.TestCase):
     self.assertIsNone(kwarg2)
     self.assertEqual(kwarg3, 'matey!')
 
+  def testBindingBlockUnknownConfigurableError(self):
+    config_str = """
+      scope/WhatAmI:
+        arg1 = 3
+        arg2 = 5
+    """
+    expected_msg = (r"No configurable matching 'WhatAmI'\.\n"
+                    r'  In bindings string line 2\n'
+                    r'          scope/WhatAmI:')
+    with self.assertRaisesRegex(ValueError, expected_msg):
+      config.parse_config(config_str)
+
   def testUnknownReference(self):
     config_str = """
       ConfigurableClass.kwarg1 = 'okie dokie'
@@ -936,9 +960,10 @@ class ConfigTest(absltest.TestCase):
 
   def testParseConfigurableReferences(self):
     config_str = """
-      configurable1.kwarg1 = 'stringval'
-      configurable1.kwarg2 = @scoped/configurable2()
-      configurable1.kwarg3 = @configurable2
+      configurable1:
+        kwarg1 = 'stringval'
+        kwarg2 = @scoped/configurable2()
+        kwarg3 = @configurable2
       scoped/configurable2.non_kwarg = 'wombat'
       configurable2.kwarg1 = {'success': True}
     """
@@ -1247,10 +1272,12 @@ class ConfigTest(absltest.TestCase):
     config_str = """
       configurable2.non_kwarg = @scope1/ConfigurableClass
       configurable2.kwarg1 = @scope2/ConfigurableClass
-      scope1/ConfigurableClass.kwarg1 = 'scope1arg1'
-      scope1/ConfigurableClass.kwarg2 = 'scope1arg2'
-      scope2/ConfigurableClass.kwarg1 = 'scope2arg1'
-      scope2/ConfigurableClass.kwarg2 = 'scope2arg2'
+      scope1/ConfigurableClass:
+        kwarg1 = 'scope1arg1'
+        kwarg2 = 'scope1arg2'
+      scope2/ConfigurableClass:
+        kwarg1 = 'scope2arg1'
+        kwarg2 = 'scope2arg2'
     """
     config.parse_config(config_str)
     # pylint: disable=no-value-for-parameter
@@ -1959,8 +1986,9 @@ class ConfigTest(absltest.TestCase):
     config_str = """
       batch_size/macro.value = 512
       discriminator/num_layers/macro.value = 5
-      configurable2.non_kwarg = @batch_size/macro()
-      configurable2.kwarg1 = @discriminator/num_layers/macro()
+      configurable2:
+        non_kwarg = @batch_size/macro()
+        kwarg1 = @discriminator/num_layers/macro()
     """
     config.parse_config(config_str)
     config.bind_parameter('batch_size/macro.value', 256)
@@ -2079,8 +2107,9 @@ class ConfigTest(absltest.TestCase):
 
   def testSingletons(self):
     config_str = """
-      ConfigurableClass.kwarg1 = @obj1/singleton()
-      ConfigurableClass.kwarg2 = @obj2/singleton()
+      ConfigurableClass:
+        kwarg1 = @obj1/singleton()
+        kwarg2 = @obj2/singleton()
       error/ConfigurableClass.kwarg1 = @not_callable/singleton()
 
       obj1/singleton.constructor = @new_object

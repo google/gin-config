@@ -98,6 +98,7 @@ class _ParsedConfig(typing.NamedTuple):
   config: Dict[Tuple[str, str], Dict[str, Any]]
   imports: Sequence[config_parser.ImportStatement]
   includes: Sequence[str]
+  blocks: Sequence[config_parser.BlockDeclaration]
 
 
 class ConfigParserTest(absltest.TestCase):
@@ -123,16 +124,21 @@ class ConfigParserTest(absltest.TestCase):
     config = {}
     imports = []
     includes = []
+    blocks = []
+
     for statement in parser:
       if isinstance(statement, config_parser.BindingStatement):
         scope, selector, arg_name, value, _ = statement
         config.setdefault((scope, selector), {})[arg_name] = value
+      elif isinstance(statement, config_parser.BlockDeclaration):
+        blocks.append(statement)
       elif isinstance(statement, config_parser.ImportStatement):
         imports.append(statement)
       elif isinstance(statement, config_parser.IncludeStatement):
         includes.append(statement.filename)
 
-    return _ParsedConfig(config=config, imports=imports, includes=includes)
+    return _ParsedConfig(
+        config=config, imports=imports, includes=includes, blocks=blocks)
 
   def testParseRandomLiterals(self):
     # Try a bunch of random nested Python structures and make sure we can parse
@@ -413,6 +419,39 @@ class ConfigParserTest(absltest.TestCase):
     with self.assertRaises(SyntaxError):
       self._parse_config('include 123')
 
+  def testParseBindingBlock(self):
+    config_str = """
+      some/scope/module.Class:
+        arg1 = None
+        # Comment.
+        arg2 = {
+          'nested': True,
+          'containers': [1, 2, 3],
+        }
+
+      unscoped.function:
+        arg = 3
+    """
+    parsed_config = self._parse_config(config_str)
+    self.assertLen(parsed_config.blocks, 2)
+    self.assertEqual(parsed_config.blocks[0].scope, 'some/scope')
+    self.assertEqual(parsed_config.blocks[0].selector, 'module.Class')
+    self.assertEqual(parsed_config.blocks[1].scope, '')
+    self.assertEqual(parsed_config.blocks[1].selector, 'unscoped.function')
+    self.assertEqual(
+        parsed_config.config, {
+            ('some/scope', 'module.Class'): {
+                'arg1': None,
+                'arg2': {
+                    'nested': True,
+                    'containers': [1, 2, 3]
+                }
+            },
+            ('', 'unscoped.function'): {
+                'arg': 3
+            }
+        })
+
   def testParseConfig(self):
     config_str = r"""
       # Leading comments are cool.
@@ -428,6 +467,15 @@ class ConfigParserTest(absltest.TestCase):
       }
 
       include 'path/to/config/file.gin'
+
+      # A binding block...
+      some/scoped/module.Configurable:
+        param_a = 'value_a'
+      # Weirdly indented comment!
+        param_b = {
+          'key': 'value_b'
+        }  # Comment at the end...
+      # Unindented comment.
 
       # They work fine in the middle.
       import module
@@ -445,6 +493,12 @@ class ConfigParserTest(absltest.TestCase):
             'param_name': {
                 'super sweet': 'multi line',
                 'dictionary': '!'
+            }
+        },
+        ('some/scoped', 'module.Configurable'): {
+            'param_a': 'value_a',
+            'param_b': {
+                'key': 'value_b'
             }
         },
         ('', 'moar'): {

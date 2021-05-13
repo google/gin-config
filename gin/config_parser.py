@@ -17,11 +17,13 @@
 
 import abc
 import ast
+import collections
+import contextlib
 import io
 import re
 import tokenize
 import typing
-from typing import Any, Optional
+from typing import Any, Optional, Sequence, Tuple
 
 from gin import selector_map
 from gin import utils
@@ -120,8 +122,10 @@ class IncludeStatement(typing.NamedTuple):
   location: Location
 
 
-class NamespaceStatement:
-  pass
+class BlockDeclaration(typing.NamedTuple):
+  scope: str
+  selector: str
+  location: Location
 
 
 class ConfigParser(object):
@@ -196,6 +200,8 @@ class ConfigParser(object):
     self._filename = getattr(string_or_filelike, 'name', None)
     self._current_token = None
     self._delegate = parser_delegate
+    self._within_block = False
+    self._statements_queue = collections.deque()
     self._advance_one_token()
 
   def __iter__(self):
@@ -218,6 +224,9 @@ class ConfigParser(object):
       Either a `BindingStatement`, `ImportStatement`, `IncludeStatement`, or
       `None` if no more statements can be parsed (EOF reached).
     """
+    if self._statements_queue:
+      return self._statements_queue.popleft()
+
     self._skip_whitespace_and_comments()
     if self._current_token.type == tokenize.ENDMARKER:
       return None
@@ -226,29 +235,33 @@ class ConfigParser(object):
     stmt_loc = self._current_location(ignore_char_num=True)
     binding_key_or_keyword = self._parse_selector()
     statement = None
-    if self._current_token.string != '=':
-      if binding_key_or_keyword in ('import', 'from'):
-        statement = self._parse_import(binding_key_or_keyword, stmt_loc)
-      elif binding_key_or_keyword == 'include':
-        str_loc = self._current_location()
-        success, filename = self._maybe_parse_basic_type()
-        if not success or not isinstance(filename, str):
-          self._raise_syntax_error('Expected file path as string.', str_loc)
-        statement = IncludeStatement(filename, stmt_loc)
-      else:
-        self._raise_syntax_error("Expected '='.")
-    else:  # We saw an '='.
+    if self._current_token.string == '=':
       self._advance_one_token()
       value = self.parse_value()
       scope, selector, arg_name = parse_binding_key(binding_key_or_keyword)
       statement = BindingStatement(scope, selector, arg_name, value, stmt_loc)
+    elif self._current_token.string == ':':
+      statement, bindings = self._parse_binding_block(
+          binding_key_or_keyword, block_location=stmt_loc)
+      self._statements_queue.extend(bindings)
+    elif binding_key_or_keyword in ('import', 'from'):
+      statement = self._parse_import(binding_key_or_keyword, stmt_loc)
+    elif binding_key_or_keyword == 'include':
+      str_loc = self._current_location()
+      success, filename = self._maybe_parse_basic_type()
+      if not success or not isinstance(filename, str):
+        self._raise_syntax_error('Expected file path as string.', str_loc)
+      statement = IncludeStatement(filename, stmt_loc)
+    else:
+      self._raise_syntax_error("Couldn't parse statement, expected ':' or '='.")
 
     assert statement, 'Internal parsing error.'
 
-    if (self._current_token.type != tokenize.NEWLINE and
-        self._current_token.type != tokenize.ENDMARKER):
+    end_types = (tokenize.NEWLINE, tokenize.DEDENT, tokenize.ENDMARKER)
+    if self._current_token.type not in end_types:
       self._raise_syntax_error('Expected newline.')
-    elif self._current_token.type == tokenize.NEWLINE:
+
+    if self._current_token.type != tokenize.ENDMARKER:
       self._advance_one_token()
 
     return statement
@@ -284,12 +297,19 @@ class ConfigParser(object):
     while current_line == self._current_token.start[0]:
       self._current_token = next(self._token_generator)
 
+  @contextlib.contextmanager
+  def _block_scope(self):
+    self._within_block = True
+    try:
+      yield
+    finally:
+      self._within_block = False
+
   def _skip_whitespace_and_comments(self):
-    skippable_token_kinds = [
-        tokenize.COMMENT, tokenize.NL, tokenize.INDENT, tokenize.DEDENT
-    ]
-    while self._current_token.type in skippable_token_kinds:
-      self._advance_one_token()
+    skippable_tokens = [tokenize.COMMENT, tokenize.NL]
+    if not self._within_block:
+      skippable_tokens.extend([tokenize.INDENT, tokenize.DEDENT])
+    self._skip(skippable_tokens)
 
   def _advance(self):
     self._advance_one_token()
@@ -322,6 +342,10 @@ class ConfigParser(object):
       received = f'  Got {actual_type_name} = {actual_value}.'
       self._raise_syntax_error(err_msg + received)
     self._advance_one_token()
+
+  def _skip(self, skippable_token_types):
+    while self._current_token.type in skippable_token_types:
+      self._advance_one_token()
 
   def _parse_dict_item(self):
     key = self.parse_value()
@@ -416,6 +440,39 @@ class ConfigParser(object):
         is_from=keyword == 'from',
         alias=alias,
         location=statement_location)
+
+  def _parse_binding_block(
+      self, scoped_selector, block_location: Location
+  ) -> Tuple[BlockDeclaration, Sequence[BindingStatement]]:
+    """Parses a single binding block (indented group of binding statements)."""
+    self._expect(':', "Expected ':'.")
+    self._skip([tokenize.COMMENT])
+    self._expect(tokenize.NEWLINE, 'Expected newline.')
+    self._expect(tokenize.INDENT, 'Expected indentation.')
+    self._skip([tokenize.COMMENT, tokenize.NL])
+
+    scope, selector = parse_scoped_selector(scoped_selector)
+    block_declaration = BlockDeclaration(
+        scope=scope, selector=selector, location=block_location)
+
+    bindings = []
+    with self._block_scope():
+      while self._current_token.type != tokenize.DEDENT:
+        binding_location = self._current_location()
+        arg_name = self._parse_identifier()
+        self._expect('=', "Expected '='.")
+        value = self.parse_value()
+        binding = BindingStatement(
+            scope=scope,
+            selector=selector,
+            arg_name=arg_name,
+            value=value,
+            location=binding_location)
+        bindings.append(binding)
+        self._expect(tokenize.NEWLINE, 'Expected newline.')
+        self._skip_whitespace_and_comments()
+
+    return block_declaration, bindings
 
   def _maybe_parse_container(self):
     """Try to parse a container type (dict, list, or tuple)."""
@@ -518,7 +575,7 @@ class ConfigParser(object):
 
 def parse_scoped_selector(scoped_selector):
   """Parse scoped selector."""
-  # Conver Macro (%scope/name) to (scope/name/macro.value)
+  # Convert Macro (%scope/name) to (scope/name/macro.value)
   if scoped_selector[0] == '%':
     if scoped_selector.endswith('.value'):
       err_str = '{} is invalid cannot use % and end with .value'

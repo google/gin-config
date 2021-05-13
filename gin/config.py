@@ -546,6 +546,10 @@ def _raise_unknown_reference_error(ref, additional_msg=''):
   raise ValueError(err_str.format(ref.selector, maybe_parens, additional_msg))
 
 
+def _raise_unknown_configurable_error(selector):
+  raise ValueError(f"No configurable matching '{selector}'.")
+
+
 class ConfigurableReference:
   """Represents a reference to a configurable function or class."""
 
@@ -781,7 +785,7 @@ class ParsedBindingKey(typing.NamedTuple):
 
     configurable_ = _parse_context().get_configurable(selector)
     if not configurable_:
-      raise ValueError("No configurable matching '{}'.".format(selector))
+      _raise_unknown_configurable_error(selector)
 
     if configurable_.is_method and '.' not in selector:
       class_name = configurable_.selector.split('.')[-2]
@@ -2029,10 +2033,14 @@ def parse_config(bindings, skip_unknown=False):
           macro_name = '{}/{}'.format(scope, selector) if scope else selector
           with utils.try_with_location(location):
             bind_parameter((macro_name, 'gin.macro', 'value'), value)
-          continue
-        if not _should_skip(selector, skip_unknown):
+        elif not _should_skip(selector, skip_unknown):
           with utils.try_with_location(location):
             bind_parameter((scope, selector, arg_name), value)
+      elif isinstance(statement, config_parser.BlockDeclaration):
+        if not _should_skip(statement.selector, skip_unknown):
+          with utils.try_with_location(statement.location):
+            if not parse_context.get_configurable(statement.selector):
+              _raise_unknown_configurable_error(statement.selector)
       elif isinstance(statement, config_parser.ImportStatement):
         with utils.try_with_location(statement.location):
           try:
