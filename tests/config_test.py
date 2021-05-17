@@ -1197,13 +1197,6 @@ class ConfigTest(absltest.TestCase):
 
     self.assertTrue(issubclass(sub_cls_ref, ConfigurableClass))
     self.assertIsInstance(sub_instance, ConfigurableClass)
-
-    # Because references always wrap the original class via subclassing, other
-    # subclasses of the original class are not subclasses of the reference.
-    self.assertFalse(issubclass(sub_cls_ref, super_cls_ref))
-    self.assertNotIsInstance(sub_instance, super_cls_ref)
-    # But due to the fact that Gin's dynamic metaclass creates instances of the
-    # actual class (not the Gin subclass), instance checks work.
     self.assertIsInstance(sub_instance, type(super_instance))
 
     self.assertEqual(super_instance.kwarg1, 'one')
@@ -2361,6 +2354,28 @@ class ConfigTest(absltest.TestCase):
     expected_msg = 'Could not find .* in the Gin registry'
     with self.assertRaisesRegex(ValueError, expected_msg):
       config.get_configurable('unknown.selector')
+
+  def testGetConfigurableScoped(self):
+    config_str = """
+      other_scope/pass_through.value = 5
+      test_scope/pass_through.value = @other_scope/pass_through()
+    """
+    config.parse_config(config_str)
+    unscoped = config.get_configurable('pass_through')
+    with self.assertRaises(TypeError):  # Missing parameter.
+      unscoped()
+
+    scoped = config.get_configurable('test_scope/pass_through')
+    self.assertEqual(scoped(), 5)
+
+    with config.config_scope('test_scope'):
+      scoped = config.get_configurable(pass_through)
+    self.assertEqual(scoped(), 5)
+
+    with config.config_scope('other_scope'):
+      # An explicit scope as part of the passed selector takes precedence.
+      scoped = config.get_configurable('test_scope/pass_through')
+    self.assertEqual(scoped(), 5)
 
 
 if __name__ == '__main__':

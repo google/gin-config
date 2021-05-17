@@ -93,7 +93,7 @@ import pprint
 import threading
 import traceback
 import typing
-from typing import Any, Callable, Dict, Optional, Sequence, Type, Union
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Type, Union
 
 from gin import config_parser
 from gin import selector_map
@@ -550,6 +550,40 @@ def _raise_unknown_configurable_error(selector):
   raise ValueError(f"No configurable matching '{selector}'.")
 
 
+def _decorate_with_scope(configurable_, scope_components):
+  """Decorates `configurable`, using the given `scope_components`.
+
+  Args:
+    configurable_: A `Configurable` instance, whose `wrapper` attribute should
+      be decorated.
+    scope_components: The list of scope components to use as a scope (e.g., as
+      returned by `current_scope`).
+
+  Returns:
+    A callable function or class, that applies the given scope to
+    `configurable_.wrapper`.
+  """
+
+  def scope_decorator(fn_or_cls):
+
+    @functools.wraps(fn_or_cls)
+    def scoping_wrapper(*args, **kwargs):
+      with config_scope(scope_components):
+        return fn_or_cls(*args, **kwargs)
+
+    return scoping_wrapper
+
+  if scope_components:
+    return _decorate_fn_or_cls(
+        scope_decorator,
+        configurable_.wrapper,
+        configurable_.selector,
+        avoid_class_mutation=True,
+        decorate_methods=True)
+  else:
+    return configurable_.wrapper
+
+
 class ConfigurableReference:
   """Represents a reference to a configurable function or class."""
 
@@ -557,30 +591,12 @@ class ConfigurableReference:
     self._scoped_selector = scoped_selector
     self._evaluate = evaluate
 
-    scoped_selector_parts = self._scoped_selector.split('/')
-    self._scopes = scoped_selector_parts[:-1]
-    self._selector = scoped_selector_parts[-1]
+    *self._scopes, self._selector = self._scoped_selector.split('/')
     self._configurable = _parse_context().get_configurable(self._selector)
     if not self._configurable:
       _raise_unknown_reference_error(self)
-
-    def reference_decorator(fn):
-      if self._scopes:
-
-        @functools.wraps(fn)
-        def scoping_wrapper(*args, **kwargs):
-          with config_scope(self._scopes):
-            return fn(*args, **kwargs)
-
-        return scoping_wrapper
-      return fn
-
-    self._scoped_configurable_fn = _decorate_fn_or_cls(
-        reference_decorator,
-        self.configurable.wrapper,
-        self.configurable.selector,
-        avoid_class_mutation=True,
-        decorate_methods=True)
+    self._scoped_configurable_fn = _decorate_with_scope(
+        self._configurable, scope_components=self._scopes)
 
   @property
   def configurable(self):
@@ -1197,27 +1213,42 @@ def config_scope(name_or_scope):
 _FnOrClsOrSelector = Union[Callable[..., Any], Type[Any], str]
 
 
-def _as_selector(fn_or_cls_or_selector: _FnOrClsOrSelector) -> str:
-  """Finds the complete selector corresponding to `fn_or_cls`."""
+def _as_scope_and_selector(
+    fn_or_cls_or_selector: _FnOrClsOrSelector) -> Tuple[Sequence[str], str]:
+  """Finds the complete selector corresponding to `fn_or_cls`.
+
+  Args:
+    fn_or_cls_or_selector: Configurable function, class or selector `str`.
+
+  Returns:
+    A tuple of `(scope_components, selector)`, where `scope_components` is a
+    list of the scope elements, either as present in the selector string passed
+    as input, or obtained from the current scope.
+  """
+  scope = []
   if isinstance(fn_or_cls_or_selector, str):
     # Resolve partial selector -> full selector
-    selector = _REGISTRY.get_match(fn_or_cls_or_selector)
+    *scope, selector = fn_or_cls_or_selector.split('/')
+    selector = _REGISTRY.get_match(selector)
     if selector:
       selector = selector.selector
   else:
     configurable_ = _inverse_lookup(fn_or_cls_or_selector)
     selector = configurable_.selector if configurable_ else None
 
+  if not scope:
+    scope = current_scope()
+
   if selector is None:
     raise ValueError(
         f'Could not find {fn_or_cls_or_selector} in the Gin registry.')
 
-  return selector
+  return scope, selector
 
 
-def _get_bindings(selector: str) -> Dict[str, Any]:
-  """Returns the bindings for the current full selector."""
-  scope_components = current_scope()
+def _get_bindings(selector: str, scope_components=None) -> Dict[str, Any]:
+  """Returns the bindings for the current full selector, with optional scope."""
+  scope_components = scope_components or current_scope()
   new_kwargs = {}
   for i in range(len(scope_components) + 1):
     partial_scope_str = '/'.join(scope_components[:i])
@@ -1253,7 +1284,8 @@ def get_bindings(
   Returns:
     The bindings kwargs injected by Gin.
   """
-  bindings_kwargs = _get_bindings(_as_selector(fn_or_cls_or_selector))
+  scope_components, selector = _as_scope_and_selector(fn_or_cls_or_selector)
+  bindings_kwargs = _get_bindings(selector, scope_components=scope_components)
   if resolve_references:
     return copy.deepcopy(bindings_kwargs)
   else:
@@ -1273,13 +1305,20 @@ def get_configurable(
       no-op for functions annotated with `@gin.configurable`);
     - A selector string that specifies the function or class.
 
+  If passing a selector string, a scope may be supplied, in which case the
+  returned configurable will have the scope applied. If a function or class is
+  passed, or no scope is supplied as part of the selector string, the current
+  active scope will be used instead.
+
   Args:
     fn_or_cls_or_selector: Configurable function, class or selector `str`.
 
   Returns:
     The configurable function or class corresponding to `fn_or_cls_or_selector`.
   """
-  return _REGISTRY[_as_selector(fn_or_cls_or_selector)].wrapper
+  scope_components, selector = _as_scope_and_selector(fn_or_cls_or_selector)
+  configurable_ = _REGISTRY[selector]
+  return _decorate_with_scope(configurable_, scope_components=scope_components)
 
 
 def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
