@@ -122,6 +122,8 @@ within a Gin file via (for example)
 `generators.LanguageGenerator.sample.temperature = 1.0` (or simply
 `LanguageGenerator.sample.temperature = 1.0`).
 
+Note: Classes with registered methods are not pickleable.
+
 ## Binding parameters to values
 
 Once a function has been marked as configurable, parameter values can be bound

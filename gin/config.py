@@ -190,40 +190,88 @@ class ParseContext:
         self._symbol_source[name] = statement
       self._imports.append(statement)
 
-  def resolve_selector(self, selector):
-    """Resolves the given `selector` using this context's symbol table."""
+  def _resolve_selector(self, selector):
+    """Resolves the given `selector` using this context's symbol table.
+
+    This method breaks the given `selector` into its contituent components
+    (names separated by '.'), resolving the first component using this
+    `ParseContext`'s symbol table, and each subsequent component as an attribute
+    on the resolved value of the previous component.
+
+    Args:
+      selector: The selector to resolve into attribute names and values.
+
+    Raises:
+      NameError: If the first component of the selector is not a symbol provided
+        by some import statement in the current `ParseContext`.
+      AttributeError: If an internal component of the selector does is not a
+        valid attribute of its parent component.
+
+    Returns:
+      A pair of lists `(attr_names, attr_values)`, with the names and values
+      corresponding to each component of `selector`.
+    """
     not_found = object()
 
-    symbol, *attr_names = selector.split('.')
-    result = self._symbol_table.get(symbol, not_found)
-    if result is not_found:
+    attr_names = selector.split('.')
+    symbol = attr_names[0]
+    module = self._symbol_table.get(symbol, not_found)
+    if module is not_found:
       raise NameError(f"'{symbol}' was not provided by an import statement.")
 
-    for attr_name in attr_names:
-      attr = getattr(result, attr_name, not_found)
+    attr_chain = [module]
+    for attr_name in attr_names[1:]:
+      attr = getattr(attr_chain[-1], attr_name, not_found)
       if attr is not_found:
         raise AttributeError(
-            f"Couldn't resolve selector {selector}; {result} has no attribute "
-            f'{attr_name}.')
-      result = attr
+            f"Couldn't resolve selector {selector}; {attr_chain[-1]} has no "
+            f'attribute {attr_name}.')
+      attr_chain.append(attr)
 
-    return result
+    return attr_names, attr_chain
+
+  def _register(self, attr_names, attr_values):
+    """Registers the function/class at the end of the named_attrs list.
+
+    In order to support configurable methods, if a method is registered (a
+    function whose parent attribute is a class), its parent class will also be
+    registered. If the parent class has already been registered, it will be
+    re-registered, and any references to the class in the current config will
+    be updated (re-initialized) to reference the updated class registration.
+
+    Args:
+      attr_names: A list of attribute names, as returned by `_resolve_selector`.
+      attr_values: A list of attribute values corresponding to `attr_names`.
+
+    Returns:
+      The `Configurable` instance associated with the new registration.
+    """
+    root_name, *inner_names, fn_or_cls_name = attr_names
+    *path_attrs, fn_or_cls = attr_values
+
+    source = self._symbol_source[root_name]
+    if source is None:  # This happens for Gin "builtins" like `macro`.
+      module = root_name
+    else:
+      module = '.'.join([source.partial_path(), *inner_names])
+
+    original = _inverse_lookup(fn_or_cls)
+    register(fn_or_cls_name, module=module)(fn_or_cls)
+    if original is not None:  # We've re-registered something...
+      for reference in iterate_references(_CONFIG, to=original.wrapper):
+        reference.initialize()
+
+    if inspect.isfunction(fn_or_cls) and inspect.isclass(path_attrs[-1]):
+      self._register(attr_names[:-1], attr_values[:-1])
+
+    return _INVERSE_REGISTRY[fn_or_cls]
 
   def get_configurable(self, selector):
     """Get a configurable matching the given `selector`."""
     if self._dynamic_registration:
-      fn_or_cls = self.resolve_selector(selector)
-      configurable_ = _inverse_lookup(fn_or_cls)
-      if configurable_ is None:  # It's unregistered, register it dynamically.
-        symbol, *attrs, name = selector.split('.')
-        source = self._symbol_source[symbol]
-        if source is None:  # This happens for Gin "builtins" like `macro`.
-          module = symbol
-        else:
-          module = '.'.join([source.partial_path(), *attrs])
-        register(name, module=module)(fn_or_cls)
-        configurable_ = _INVERSE_REGISTRY[fn_or_cls]
-      return configurable_
+      attr_names, attr_values = self._resolve_selector(selector)
+      existing_configurable = _inverse_lookup(attr_values[-1])
+      return existing_configurable or self._register(attr_names, attr_values)
     else:  # No dynamic registration, just look up the selector.
       return _REGISTRY.get_match(selector)
 
@@ -364,7 +412,7 @@ def _find_registered_methods(cls, selector):
   for name, method in inspect.getmembers(cls, predicate=is_method):
     if method in _INVERSE_REGISTRY:
       method_info = _INVERSE_REGISTRY[method]
-      if method_info.module != method.__module__:
+      if method_info.module not in (method.__module__, selector):
         raise ValueError(
             f'Method {name} in class {cls} ({selector}) was registered with a '
             f'custom module ({method_info.module}), but the class is also '
@@ -590,7 +638,9 @@ class ConfigurableReference:
   def __init__(self, scoped_selector, evaluate):
     self._scoped_selector = scoped_selector
     self._evaluate = evaluate
+    self.initialize()
 
+  def initialize(self):
     *self._scopes, self._selector = self._scoped_selector.split('/')
     self._configurable = _parse_context().get_configurable(self._selector)
     if not self._configurable:
@@ -1534,8 +1584,9 @@ def _make_configurable(fn_or_cls,
     raise ValueError("Module '{}' is invalid.".format(module))
 
   selector = module + '.' + name if module else name
-  if not _INTERACTIVE_MODE and selector in _REGISTRY:
-    err_str = ("A configurable matching '{}' already exists.\n\n"
+  if (not _INTERACTIVE_MODE and selector in _REGISTRY and
+      _REGISTRY[selector].wrapped is not fn_or_cls):
+    err_str = ("A different configurable matching '{}' already exists.\n\n"
                'To allow re-registration of configurables in an interactive '
                'environment, use:\n\n'
                '    gin.enter_interactive_mode()')

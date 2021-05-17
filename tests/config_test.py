@@ -550,6 +550,18 @@ class RegisteredClassWithRegisteredMethods:
     return arg
 
 
+class DynamicallyRegisteredClassWithMethods:
+
+  def __init__(self, param):
+    self.param = param
+
+  def method1(self, arg):
+    return arg
+
+  def method2(self, arg):
+    return arg
+
+
 @config.register(module='custom.module')
 class RegisteredClassWithCustomModule:
 
@@ -1565,7 +1577,7 @@ class ConfigTest(absltest.TestCase):
     with self.assertRaisesRegex(ValueError, expected_message):
       config.parse_config('registered_method2.arg = 2')
 
-  def testRegisterdClassWithCustomModuleAndRegisteredMethods(self):
+  def testRegisteredClassWithCustomModuleAndRegisteredMethods(self):
     config_str = """
       custom.module.RegisteredClassWithCustomModule.registered_method.arg = 2
       pass_through.value = @RegisteredClassWithCustomModule()
@@ -1573,6 +1585,29 @@ class ConfigTest(absltest.TestCase):
     config.parse_config(config_str)
     instance = pass_through(config.REQUIRED)
     self.assertEqual(instance.registered_method(), 2)
+
+  def testDynamicallyRegisteredClassWithMethods(self):
+    config_str = """
+      from __gin__ import dynamic_registration
+
+      import __main__ as test
+
+      # The configurable reference is created before methods are registered.
+      # Creating this reference also dynamically registers the class.
+      test.pass_through.value = @test.DynamicallyRegisteredClassWithMethods()
+      test.DynamicallyRegisteredClassWithMethods.param = 5
+      # Configuring the methods should register them, and also re-register the
+      # class in a way that picks up the new method registrations.
+      test.DynamicallyRegisteredClassWithMethods.method1.arg = 'arg1'
+      test.DynamicallyRegisteredClassWithMethods.method2:  # Test this syntax...
+        arg = 'arg2'
+    """
+    config.parse_config(config_str)
+
+    instance = pass_through(config.REQUIRED)
+    self.assertEqual(instance.param, 5)
+    self.assertEqual(instance.method1(), 'arg1')
+    self.assertEqual(instance.method2(), 'arg2')
 
   def testRequiredArgs(self):
     with self.assertRaisesRegex(RuntimeError, 'arg1.*arg2'):
@@ -1885,7 +1920,11 @@ class ConfigTest(absltest.TestCase):
     def duplicate_fn1():  # pylint: disable=unused-variable
       return 'duplicate_fn1'
 
-    with self.assertRaisesRegex(ValueError, 'A configurable matching'):
+    expected_msg = (
+        r"A different configurable matching '__main__\.duplicate_fn' already "
+        r'exists.')
+
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @config.configurable('duplicate_fn')
       def duplicate_fn2():  # pylint: disable=unused-variable
@@ -1902,7 +1941,7 @@ class ConfigTest(absltest.TestCase):
       def duplicate_fn3():  # pylint: disable=unused-variable
         return 'duplicate_fn3'
 
-    with self.assertRaisesRegex(ValueError, 'A configurable matching'):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @config.configurable('duplicate_fn')
       def duplicate_fn4():  # pylint: disable=unused-variable
