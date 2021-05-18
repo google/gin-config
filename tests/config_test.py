@@ -550,7 +550,13 @@ class RegisteredClassWithRegisteredMethods:
     return arg
 
 
-class DynamicallyRegisteredClassWithMethods:
+class BaseClassWithMethods:
+
+  def base_method(self, arg):
+    return arg
+
+
+class DynamicallyRegisteredClassWithMethods(BaseClassWithMethods):
 
   def __init__(self, param):
     self.param = param
@@ -1601,6 +1607,8 @@ class ConfigTest(absltest.TestCase):
       test.DynamicallyRegisteredClassWithMethods.method1.arg = 'arg1'
       test.DynamicallyRegisteredClassWithMethods.method2:  # Test this syntax...
         arg = 'arg2'
+      # Configuring methods provided by a base class should also work.
+      test.DynamicallyRegisteredClassWithMethods.base_method.arg = 'base_arg'
     """
     config.parse_config(config_str)
 
@@ -1608,6 +1616,7 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(instance.param, 5)
     self.assertEqual(instance.method1(), 'arg1')
     self.assertEqual(instance.method2(), 'arg2')
+    self.assertEqual(instance.base_method(), 'base_arg')
 
   def testRequiredArgs(self):
     with self.assertRaisesRegex(RuntimeError, 'arg1.*arg2'):
