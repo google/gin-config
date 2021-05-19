@@ -394,21 +394,21 @@ def _find_registered_methods(cls, selector):
   """Finds methods in `cls` that have been wrapped or registered with Gin."""
   registered_methods = {}
 
-  def is_method(maybe_method, cls=cls):
+  def is_method(maybe_method):
     # Python 3 has no notion of an unbound method. To avoid a scenario where a
     # previously registered function is assigned as a class attribute (e.g., the
     # default value of a dataclass field) and considered a method here, we
     # require that the function's __module__ is the same as that of the class,
     # its __name__ matches the name it is accessible under via the class, and
     # its __qualname__ contains the class name as `Class.name`.
-    if (inspect.isfunction(maybe_method) and
-        maybe_method.__module__ == cls.__module__ and
-        getattr(cls, maybe_method.__name__, None) == maybe_method):
-      qualname_parts = maybe_method.__qualname__.split('.')
-      if len(qualname_parts) > 1 and qualname_parts[-2] == cls.__name__:
-        return True
-    bases = inspect.getmro(cls)[1:]  # The first element is just `cls`.
-    return any(is_method(maybe_method, base) for base in bases)
+    for base in inspect.getmro(cls):  # pytype: disable=wrong-arg-types
+      if (inspect.isfunction(maybe_method) and
+          maybe_method.__module__ == base.__module__ and
+          getattr(base, maybe_method.__name__, None) == maybe_method):
+        qualname_parts = maybe_method.__qualname__.split('.')
+        if len(qualname_parts) > 1 and qualname_parts[-2] == base.__name__:
+          return True
+    return False
 
   for name, method in inspect.getmembers(cls, predicate=is_method):
     if method in _INVERSE_REGISTRY:
