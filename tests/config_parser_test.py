@@ -422,8 +422,9 @@ class ConfigParserTest(absltest.TestCase):
   def testParseBindingBlock(self):
     config_str = """
       some/scope/module.Class:
+        # arg1 does this.
         arg1 = None
-        # Comment.
+        # arg2 does that.
         arg2 = {
           'nested': True,
           'containers': [1, 2, 3],

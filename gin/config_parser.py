@@ -448,6 +448,7 @@ class ConfigParser(object):
     self._expect(':', "Expected ':'.")
     self._skip([tokenize.COMMENT])
     self._expect(tokenize.NEWLINE, 'Expected newline.')
+    self._skip([tokenize.COMMENT, tokenize.NL])
     self._expect(tokenize.INDENT, 'Expected indentation.')
     self._skip([tokenize.COMMENT, tokenize.NL])
 
