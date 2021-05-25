@@ -1887,6 +1887,18 @@ def _minimal_selector(configurable_):
   return minimal_selector
 
 
+def _make_unique(sequence, key=None):
+  key = key or (lambda x: x)
+  seen = set()
+  output = []
+  for x in sequence:
+    key_val = key(x)
+    if key_val not in seen:
+      seen.add(key_val)
+      output.append(x)
+  return output
+
+
 def _config_str(configuration_object,
                 max_line_length=80,
                 continuation_indent=4):
@@ -1930,9 +1942,13 @@ def _config_str(configuration_object,
   # Build the output as an array of formatted Gin statements. Each statement may
   # span multiple lines. Imports are first, followed by macros, and finally all
   # other bindings sorted in alphabetical order by configurable name.
+  unique_imports = _make_unique(
+      # Sort to prefer `from` style statements over `import` statements.
+      sorted(_IMPORTS, key=lambda s: not s.is_from),
+      key=lambda s: (s.module, s.bound_name()))
   formatted_statements = [
       statement.format()
-      for statement in sorted(_IMPORTS, key=lambda s: s.module)
+      for statement in sorted(unique_imports, key=lambda s: s.module)
   ]
   if formatted_statements:
     formatted_statements.append('')

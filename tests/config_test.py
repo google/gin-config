@@ -29,7 +29,9 @@ from gin import config
 
 
 _TEST_CONFIG_STR = """
-import gin.testdata.import_test_configurables
+import gin.testdata.import_test_configurables as alias
+# Make sure we only get one copy of the import in the output.
+from gin.testdata import import_test_configurables as alias
 
 configurable1.kwarg1 = \\
   'a super duper extra double very wordy string that is just plain long'
@@ -73,7 +75,7 @@ a.woolly.sheep.dolly.kwarg = 0
 """
 
 _EXPECTED_OPERATIVE_CONFIG_STR = """
-import gin.testdata.import_test_configurables
+from gin.testdata import import_test_configurables as alias
 
 # Macros:
 # ==============================================================================
@@ -143,7 +145,7 @@ var_arg_fn.non_kwarg2 = \\
 """
 
 _EXPECTED_CONFIG_STR = """
-import gin.testdata.import_test_configurables
+from gin.testdata import import_test_configurables as alias
 
 # Macros:
 # ==============================================================================
