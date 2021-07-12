@@ -16,6 +16,7 @@
 import abc
 import collections
 import enum
+import functools
 import inspect
 import io
 import logging
@@ -2370,6 +2371,25 @@ class ConfigTest(absltest.TestCase):
           'non_kwarg': 'kwarg1',
           'kwarg2': 456,
       })
+
+  def testGetBindingsScopeStrict(self):
+    config_str = """
+      configurable1.kwarg1 = 9
+      scope/scope2/configurable1.kwarg1 = 7
+    """
+    config.parse_config(config_str)
+
+    get_binding_strict = functools.partial(
+        config.get_bindings, inherit_scopes=False)
+
+    self.assertDictEqual(
+        get_binding_strict('configurable1'), {'kwarg1': 9})
+    self.assertDictEqual(
+        get_binding_strict('scope/configurable1'), {})
+    self.assertDictEqual(
+        get_binding_strict('scope/scope2/configurable1'), {'kwarg1': 7})
+    self.assertDictEqual(
+        get_binding_strict('scope2/configurable1'), {})
 
   def testGetBindingsReferences(self):
     # `resolve_references=True`

@@ -1297,12 +1297,22 @@ def _as_scope_and_selector(
   return scope, selector
 
 
-def _get_bindings(selector: str, scope_components=None) -> Dict[str, Any]:
+def _get_bindings(
+    selector: str,
+    scope_components=None,
+    inherit_scopes: bool = True,
+) -> Dict[str, Any]:
   """Returns the bindings for the current full selector, with optional scope."""
   scope_components = scope_components or current_scope()
   new_kwargs = {}
-  for i in range(len(scope_components) + 1):
-    partial_scope_str = '/'.join(scope_components[:i])
+
+  if not inherit_scopes:  # In strict scope mode, only match the exact scope
+    partial_scopes = [scope_components]
+  else:
+    partial_scopes = [
+        scope_components[:i] for i in range(len(scope_components) + 1)]
+  for partial_scope in partial_scopes:
+    partial_scope_str = '/'.join(partial_scope)
     new_kwargs.update(_CONFIG.get((partial_scope_str, selector), {}))
   return new_kwargs
 
@@ -1310,6 +1320,7 @@ def _get_bindings(selector: str, scope_components=None) -> Dict[str, Any]:
 def get_bindings(
     fn_or_cls_or_selector: _FnOrClsOrSelector,
     resolve_references: bool = True,
+    inherit_scopes: bool = True,
 ) -> Dict[str, Any]:
   """Returns the bindings associated with the given configurable.
 
@@ -1331,12 +1342,19 @@ def get_bindings(
     resolve_references: Whether or not references (and macros) should be
        resolved. If `False`, the output may contain instances of Gin's
        `ConfigurableReference` class.
+    inherit_scopes: If False, only match the exact scope (so
+      `get_bindings('scope1/fn')` do not match `scope1/scope2/fn`, nor `fn`
+      but only the exact 'scope1/fn').
 
   Returns:
     The bindings kwargs injected by Gin.
   """
   scope_components, selector = _as_scope_and_selector(fn_or_cls_or_selector)
-  bindings_kwargs = _get_bindings(selector, scope_components=scope_components)
+  bindings_kwargs = _get_bindings(
+      selector,
+      scope_components=scope_components,
+      inherit_scopes=inherit_scopes,
+  )
   if resolve_references:
     return copy.deepcopy(bindings_kwargs)
   else:
