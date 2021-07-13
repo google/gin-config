@@ -18,16 +18,18 @@
 See https://github.com/google/gin-config for documentation.
 """
 
-from os import path
-from setuptools import find_packages
-from setuptools import setup
 
-_VERSION = '0.4.1'
+from os import path
+from setuptools import find_packages, setup
+
+_VERSION = '0.0.1'
 
 here = path.abspath(path.dirname(__file__))
 
 long_description = """
-# Gin
+# Cocktail
+
+Cocktail is the Cohere fork of the Gin library by Google. 
 
 Gin provides a lightweight configuration framework for Python, based on
 dependency injection. Functions or classes can be decorated with
@@ -46,9 +48,9 @@ TensorFlow), which tend to have many parameters, often nested in complex ways.
 """
 
 setup(
-    name='gin-config',
+    name='cocktail',
     version=_VERSION,
-    include_package_data=True,
+    # include_package_data=True,
     packages=find_packages(exclude=['docs']),  # Required
     package_data={'testdata': ['testdata/*.gin']},
     install_requires=[],
@@ -64,12 +66,12 @@ setup(
             'nose',
         ]
     },
-    description='Gin-Config: A lightweight configuration library for Python',
+    description='Cocktail: Cohere fork of Gin, a lightweight configuration library for Python',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/google/gin-config',  # Optional
-    author='The Gin-Config Team',  # Optional
-    classifiers=[  # Optional
+    url='https://github.com/cohere-ai/cocktail',
+    author='Cohere',
+    classifiers=[
         'Development Status :: 3 - Alpha',
 
         # Indicate who your project is intended for
@@ -96,11 +98,11 @@ setup(
         'Topic :: Software Development :: Libraries',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
-    project_urls={  # Optional
-        'Documentation': 'https://github.com/google/gin-config/docs',
-        'Bug Reports': 'https://github.com/google/gin-config/issues',
-        'Source': 'https://github.com/google/gin-config',
-    },
+    # project_urls={  # Optional
+    #     'Documentation': 'https://github.com/google/gin-config/docs',
+    #     'Bug Reports': 'https://github.com/google/gin-config/issues',
+    #     'Source': 'https://github.com/google/gin-config',
+    # },
     license='Apache 2.0',
-    keywords='gin-config gin python configuration machine learning'
+    # keywords='gin-config gin python configuration machine learning'
 )
