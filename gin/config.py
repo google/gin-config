@@ -2482,10 +2482,10 @@ def _iterate_flattened_values(value):
     yield value
     return
 
-  if isinstance(value, collections.Mapping):
-    value = collections.ValuesView(value)  # pytype: disable=wrong-arg-count
+  if isinstance(value, collections.abc.Mapping):
+    value = collections.abc.ValuesView(value)  # pytype: disable=wrong-arg-count
 
-  if isinstance(value, collections.Iterable):
+  if isinstance(value, collections.abc.Iterable):
     for nested_value in value:
       for nested_nested_value in _iterate_flattened_values(nested_value):
         yield nested_nested_value
