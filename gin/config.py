@@ -1013,7 +1013,7 @@ def query_parameter(binding_key):
 
   Raises:
     ValueError: If no function can be found matching the configurable name
-      specified by `biding_key`, or if the specified parameter name is
+      specified by `binding_key`, or if the specified parameter name is
       denylisted or not in the function's allowlist (if present) or if there is
       no value bound for the queried parameter or configurable.
   """
