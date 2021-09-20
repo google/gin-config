@@ -109,6 +109,17 @@ config.external_configurable(
 config.external_configurable(
     tf.keras.optimizers.SGD, module='tf.keras.optimizers')
 
+
+# LR schedules
+def _register_schedule(module):
+  config.external_configurable(module, module='tf.keras.optimizers.schedules')
+_register_schedule(tf.keras.optimizers.schedules.ExponentialDecay)
+_register_schedule(tf.keras.optimizers.schedules.PiecewiseConstantDecay)
+_register_schedule(tf.keras.optimizers.schedules.PolynomialDecay)
+_register_schedule(tf.keras.optimizers.schedules.InverseTimeDecay)
+_register_schedule(tf.keras.optimizers.schedules.CosineDecay)
+_register_schedule(tf.keras.optimizers.schedules.CosineDecayRestarts)
+
 # Activation functions.
 
 config.external_configurable(tf.nn.crelu, 'tf.nn.crelu')
