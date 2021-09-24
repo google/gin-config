@@ -1255,8 +1255,8 @@ class ConfigTest(absltest.TestCase):
 
     instance = cls()
     self.assertIsInstance(instance, ExternalClass)
-    self.assertEqual(instance.kwarg1, 'statler')
-    self.assertEqual(instance.kwarg2, 'waldorf')
+    self.assertEqual(instance.kwarg1, 'statler')  # pytype: disable=attribute-error  # kwargs-checking
+    self.assertEqual(instance.kwarg2, 'waldorf')  # pytype: disable=attribute-error  # kwargs-checking
 
     config_str = """
       ConfigurableClass.kwarg1 = @ExternalConfigurable
@@ -1328,12 +1328,12 @@ class ConfigTest(absltest.TestCase):
     self.assertIsInstance(sub_instance, ConfigurableExternalSubclass)
     self.assertIsInstance(sub_instance, ExternalClass)
 
-    self.assertEqual(super_instance.kwarg1, 'one')
-    self.assertIsNone(super_instance.kwarg2)
+    self.assertEqual(super_instance.kwarg1, 'one')  # pytype: disable=attribute-error  # kwargs-checking
+    self.assertIsNone(super_instance.kwarg2)  # pytype: disable=attribute-error  # kwargs-checking
 
-    self.assertIsNone(sub_instance.kwarg1)
-    self.assertEqual(sub_instance.kwarg2, 'two')
-    self.assertEqual(sub_instance.kwarg3, 'three')
+    self.assertIsNone(sub_instance.kwarg1)  # pytype: disable=attribute-error  # kwargs-checking
+    self.assertEqual(sub_instance.kwarg2, 'two')  # pytype: disable=attribute-error  # kwargs-checking
+    self.assertEqual(sub_instance.kwarg3, 'three')  # pytype: disable=attribute-error  # kwargs-checking
 
   def testAbstractConfigurableSubclass(self):
     config_str = """
