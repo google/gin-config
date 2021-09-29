@@ -186,6 +186,11 @@ class ParseContext:
       module = __import__(statement.module, fromlist=fromlist)
       if self._dynamic_registration:
         name = statement.bound_name()
+        if name == 'gin':
+          raise ValueError(
+              f'The `gin` symbol is reserved; cannot bind import statement '
+              f'"{statement.format()}" to `gin`. Use an alias for the import '
+              f'(via `import ... as ...` or `from ... import ... [as ...]`).')
         self._symbol_table[name] = module
         self._symbol_source[name] = statement
       self._imports.append(statement)

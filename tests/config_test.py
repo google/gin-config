@@ -662,18 +662,6 @@ class ConfigTest(absltest.TestCase):
     with self.assertRaisesRegex(IOError, err_msg_regex):
       config.parse_config_file(config_file)
 
-  def testDynamicRegistrationImport(self):
-    config_str = """
-      from __gin__ import dynamic_registration
-
-      import gin.testdata.dynamic_registration
-
-      gin.testdata.dynamic_registration.function.arg = 2
-    """
-    config.parse_config(config_str)
-    bindings = config.get_bindings('gin.testdata.dynamic_registration.function')
-    self.assertEqual(bindings, {'arg': 2})
-
   def testDynamicRegistrationImportAs(self):
     config_str = """
       from __gin__ import dynamic_registration
@@ -1504,7 +1492,7 @@ class ConfigTest(absltest.TestCase):
   def testParsingImportsIsIdempotentUpToSorting(self):
     config_str = """
       from __gin__ import dynamic_registration  # Ignored in config_str...
-      import gin.testdata.import_test_configurables
+      import gin.testdata.import_test_configurables as test_configurables
       import __main__ as main
       from gin import testdata
       from gin.testdata import dynamic_registration as dr
@@ -1514,7 +1502,7 @@ class ConfigTest(absltest.TestCase):
         'import __main__ as main',
         'from gin import testdata',
         'from gin.testdata import dynamic_registration as dr',
-        'import gin.testdata.import_test_configurables',
+        'import gin.testdata.import_test_configurables as test_configurables',
     ])
     self.assertEqual(config.config_str().strip(), expected_config_str)
 

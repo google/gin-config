@@ -113,6 +113,29 @@ class TFConfigTest(tf.test.TestCase):
     self.assertIs(vals['string'], tf.string)
     self.assertIs(vals['qint8'], tf.qint8)
 
+  def testDynamicRegistrationImportAsGinError(self):
+    config_str = """
+      from __gin__ import dynamic_registration
+      import gin.tf.external_configurables
+      import __main__
+
+      __main__.configurable.arg = %gin.REQUIRED
+    """
+    expected_msg = 'The `gin` symbol is reserved; cannot bind import statement '
+    with self.assertRaisesRegex(ValueError, expected_msg):
+      config.parse_config(config_str)
+
+  def testCompatibilityWithDynamicRegistration(self):
+    config_str = """
+      from __gin__ import dynamic_registration
+      from gin.tf import external_configurables
+      import __main__
+
+      __main__.configurable.arg = %tf.float32
+    """
+    config.parse_config(config_str)
+    self.assertEqual(configurable(), {'arg': tf.float32})
+
 
 if __name__ == '__main__':
   tf.test.main()
