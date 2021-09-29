@@ -2013,7 +2013,10 @@ def operative_config_str(max_line_length=80, continuation_indent=4):
   Returns:
     A config string capturing all parameter values set in the current program.
   """
-  return _config_str(_OPERATIVE_CONFIG, max_line_length, continuation_indent)
+  with _OPERATIVE_CONFIG_LOCK:
+    result = _config_str(
+        _OPERATIVE_CONFIG, max_line_length, continuation_indent)
+  return result
 
 
 def config_str(max_line_length=80, continuation_indent=4):
