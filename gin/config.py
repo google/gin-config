@@ -93,7 +93,7 @@ import pprint
 import threading
 import traceback
 import typing
-from typing import Any, Callable, Dict, Optional, Sequence, Set, Tuple, Type, Union
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Type, Union
 
 from gin import config_parser
 from gin import selector_map
@@ -148,16 +148,7 @@ class _GinBuiltins:
 class ParseContext:
   """Encapsulates context for parsing a single file."""
 
-  def __init__(self, parse_only=False):
-    """Initializes the instance.
-
-    Args:
-      parse_only: If `True`, all parsed configurables are assumed to registered
-        already. If dynamic registration is enabled, actually importing an
-        unregistered configurable becomes an error. This can be useful when
-        generating (operative) config strings.
-    """
-    self._parse_only = parse_only
+  def __init__(self):
     self._imports = []
     self._symbol_table = {}
     self._symbol_source = {}
@@ -202,7 +193,7 @@ class ParseContext:
               f'(via `import ... as ...` or `from ... import ... [as ...]`).')
         self._symbol_table[name] = module
         self._symbol_source[name] = statement
-    self._imports.append(statement)
+      self._imports.append(statement)
 
   def _resolve_selector(self, selector):
     """Resolves the given `selector` using this context's symbol table.
@@ -244,21 +235,6 @@ class ParseContext:
 
     return attr_names, attr_chain
 
-  def _import_source(self, import_statement, attr_names):
-    """Creates an "import source" tuple for a given reference."""
-    if not import_statement.is_from and not import_statement.alias:
-      module_parts = import_statement.module.split('.')
-      num_matches = 0
-      for module_part, attr_name in zip(module_parts, attr_names[:-1]):
-        if module_part != attr_name:
-          break
-        num_matches += 1
-      module = '.'.join(module_parts[:num_matches])
-      selector = '.'.join(attr_names[num_matches:])
-      return (import_statement._replace(module=module), selector)
-    else:
-      return (import_statement, '.'.join(attr_names[1:]))
-
   def _register(self, attr_names, attr_values):
     """Registers the function/class at the end of the named_attrs list.
 
@@ -285,12 +261,7 @@ class ParseContext:
       module = '.'.join([source.partial_path(), *inner_names])
 
     original = _inverse_lookup(fn_or_cls)
-    _make_configurable(
-        fn_or_cls,
-        name=fn_or_cls_name,
-        module=module,
-        import_source=self._import_source(source, attr_names),
-        avoid_class_mutation=True)
+    register(fn_or_cls_name, module=module)(fn_or_cls)
     if original is not None:  # We've re-registered something...
       for reference in iterate_references(_CONFIG, to=original.wrapper):
         reference.initialize()
@@ -305,22 +276,18 @@ class ParseContext:
     if self._dynamic_registration:
       attr_names, attr_values = self._resolve_selector(selector)
       existing_configurable = _inverse_lookup(attr_values[-1])
-      if existing_configurable is None and self._parse_only:
-        raise RuntimeError(
-            f'Encountered unregistered configurable `{selector}` in parse_only '
-            f'mode. This indicates an internal error. Please file a bug.')
       return existing_configurable or self._register(attr_names, attr_values)
     else:  # No dynamic registration, just look up the selector.
       return _REGISTRY.get_match(selector)
 
 
-def _parse_context() -> ParseContext:
+def _parse_context():
   return _PARSE_CONTEXTS[-1]
 
 
 @contextlib.contextmanager
-def _parse_scope(parse_only=False):
-  _PARSE_CONTEXTS.append(ParseContext(parse_only))
+def _parse_scope():
+  _PARSE_CONTEXTS.append(ParseContext())
   try:
     yield _parse_context()
   finally:
@@ -621,7 +588,6 @@ class Configurable(typing.NamedTuple):
   wrapped: Callable[..., Any]
   name: str
   module: str
-  import_source: Optional[Tuple[config_parser.ImportStatement, str]]
   allowlist: Optional[Sequence[str]]
   denylist: Optional[Sequence[str]]
   selector: str
@@ -1595,8 +1561,7 @@ def _make_configurable(fn_or_cls,
                        module=None,
                        allowlist=None,
                        denylist=None,
-                       avoid_class_mutation=False,
-                       import_source=None):
+                       avoid_class_mutation=False):
   """Wraps `fn_or_cls` to make it configurable.
 
   Infers the configurable name from `fn_or_cls.__name__` if necessary, and
@@ -1618,10 +1583,6 @@ def _make_configurable(fn_or_cls,
       is `True`, decorate by subclassing `fn_or_cls`'s metaclass and overriding
       its `__call__` method. If `False`, replace the existing `__init__` or
       `__new__` with a decorated version.
-    import_source: When using dynamic registration, this provides the import
-      source of the registered configurable and consists of a tuple of
-      `(source_module, attribute_path)` describing the module fn_or_cls is
-      imported from and its attribute path within that module.
 
   Returns:
     A wrapped version of `fn_or_cls` that will take parameter values from the
@@ -1681,7 +1642,6 @@ def _make_configurable(fn_or_cls,
       wrapped=fn_or_cls,
       name=name,
       module=module,
-      import_source=import_source,
       allowlist=allowlist,
       denylist=denylist,
       selector=selector)
@@ -1914,6 +1874,15 @@ def register(name_or_fn=None,
   return perform_decoration
 
 
+def _minimal_selector(configurable_):
+  minimal_selector = _REGISTRY.minimal_selector(configurable_.selector)
+  if configurable_.is_method:
+    # Methods require `Class.method` as selector.
+    if '.' not in minimal_selector:
+      minimal_selector = '.'.join(configurable_.selector.split('.')[-2:])
+  return minimal_selector
+
+
 def _make_unique(sequence, key=None):
   key = key or (lambda x: x)
   seen = set()
@@ -1924,121 +1893,6 @@ def _make_unique(sequence, key=None):
       seen.add(key_val)
       output.append(x)
   return output
-
-
-def _uniquify_name(candidate_name: str, existing_names: Set[str]):
-  i = 2
-  unique_name = candidate_name
-  while unique_name in existing_names:
-    unique_name = candidate_name + str(i)
-    i += 1
-  return unique_name
-
-
-class ImportManager:
-  """Manages imports required when writing out a full config string.
-
-  This class does bookkeeping to ensure each import is only output once, and
-  that each import receives a unique name/alias to avoid collisions.
-  """
-
-  def __init__(self, imports):
-    """Initializes the `ImportManager` instance.
-
-    Args:
-      imports: An iterable of `ImportStatement` instances, providing existing
-        imports to manage. Every effort will be taken here to respect the
-        existing structure and format of the imports (e.g., any aliases
-        provided, and whether the imports use the `from` syntax). Note that if
-        dynamic registration is enabled, it should be included here as one of
-        the provided statements.
-    """
-    self.dynamic_registration = any(
-        statement.module == '__gin__.dynamic_registration'
-        for statement in imports)
-    self.imports = []
-    self.module_selectors = {}
-    self.names = set()
-    # Prefer to order `from` style imports first.
-    for statement in sorted(imports, key=lambda s: (s.module, not s.is_from)):
-      self.add_import(statement)
-
-  def add_import(self, statement: config_parser.ImportStatement):
-    """Adds a single import to this `ImportManager` instance.
-
-    The provided statement is deduped and possibly re-aliased to ensure it has a
-    unique name.
-
-    Args:
-      statement: The `ImportStatement` to add.
-    """
-    if statement.module in self.module_selectors:
-      return
-    unique_name = _uniquify_name(statement.bound_name(), self.names)
-    if unique_name != statement.bound_name():
-      statement = statement._replace(alias=unique_name)
-    if statement.is_from or statement.alias:
-      selector = statement.bound_name()
-    else:
-      selector = statement.module
-    self.module_selectors[statement.module] = selector
-    self.names.add(statement.bound_name())
-    self.imports.append(statement)
-
-  def require_configurable(self, configurable_: Configurable):
-    """Adds the import required for `configurable_`, if not already present.
-
-    Args:
-      configurable_: The specific `Configurable` whose corresponding module
-        should be imported.
-    """
-    if not self.dynamic_registration:
-      return
-    if configurable_.wrapped == macro:  # pylint: disable=comparison-with-callable
-      return
-    if configurable_.import_source:
-      self.add_import(configurable_.import_source[0])
-    else:
-      module = configurable_.wrapped.__module__
-      import_statement = config_parser.ImportStatement(
-          module=module,
-          is_from=True,
-          alias=None,
-          location=config_parser.Location(None, 0, None, ''))
-      self.add_import(import_statement)
-
-  def minimal_selector(self, configurable_: Configurable) -> str:
-    """Returns a minimal selector corresponding to `configurable_`.
-
-    This method has different behavior depending on whether dynamic registration
-    has been enabled (see `__init__`). If dynamic registration is enabled, then
-    the minimal selector is a full '.'-seperated attribute chain beginning with
-    the name of an imported module. If dynamic registration is not enabled, then
-    the returned selector is the minimal string required to uniquely identify
-    `configurable_` (this includes the function/class name, and enough
-    components of its module name to make the resulting selector unique).
-
-    Args:
-      configurable_: The `Configurable` to return a minimal selector for.
-
-    Returns:
-      The minimal selector for `configurable_` as a string.
-    """
-    if self.dynamic_registration:
-      if configurable_.import_source:
-        import_statement, name = configurable_.import_source
-        module = import_statement.module
-      else:
-        module = configurable_.wrapped.__module__
-        name = configurable_.wrapped.__qualname__
-      return f'{self.module_selectors[module]}.{name}'
-    else:
-      minimal_selector = _REGISTRY.minimal_selector(configurable_.selector)
-      if configurable_.is_method:
-        # Methods require `Class.method` as selector.
-        if '.' not in minimal_selector:
-          minimal_selector = '.'.join(configurable_.selector.split('.')[-2:])
-      return minimal_selector
 
 
 def _config_str(configuration_object,
@@ -2081,60 +1935,52 @@ def _config_str(configuration_object,
       parts[0] += f'.{method_name}'  # parts[0] is the class name.
     return parts
 
-  import_manager = ImportManager(_IMPORTS)
-  if import_manager.dynamic_registration:
-    for _, selector in configuration_object:
-      import_manager.require_configurable(_REGISTRY[selector])
-  sorted_imports = sorted(import_manager.imports, key=lambda s: s.module)
-
   # Build the output as an array of formatted Gin statements. Each statement may
   # span multiple lines. Imports are first, followed by macros, and finally all
   # other bindings sorted in alphabetical order by configurable name.
-  formatted_statements = [statement.format() for statement in sorted_imports]
+  unique_imports = _make_unique(
+      # Sort to prefer `from` style statements over `import` statements.
+      sorted(_IMPORTS, key=lambda s: not s.is_from),
+      key=lambda s: (s.module, s.bound_name()))
+  formatted_statements = [
+      statement.format()
+      for statement in sorted(unique_imports, key=lambda s: s.module)
+  ]
   if formatted_statements:
     formatted_statements.append('')
 
-  # For config strings that use dynamic registration, we need a parse scope open
-  # in order to properly resolve symbols. In particular, the
-  # _is_literally_representable functions checks to see if something can be
-  # parsed in order to determine if it should be represented in the config str.
-  with _parse_scope(parse_only=True) as parse_context:
-    for stmt in sorted_imports:
-      parse_context.process_import(stmt)
+  macros = {}
+  for (scope, selector), config in configuration_object.items():
+    if _REGISTRY[selector].wrapped == macro:  # pylint: disable=comparison-with-callable
+      macros[scope, selector] = config
+  if macros:
+    formatted_statements.append('# Macros:')
+    formatted_statements.append('# ' + '=' * (max_line_length - 2))
+  for (name, _), config in sorted(macros.items(), key=sort_key):
+    binding = format_binding(name, config['value'])
+    formatted_statements.append(binding)
+  if macros:
+    formatted_statements.append('')
 
-    macros = {}
-    for (scope, selector), config in configuration_object.items():
-      if _REGISTRY[selector].wrapped == macro:  # pylint: disable=comparison-with-callable
-        macros[scope, selector] = config
-    if macros:
-      formatted_statements.append('# Macros:')
-      formatted_statements.append('# ' + '=' * (max_line_length - 2))
-    for (name, _), config in sorted(macros.items(), key=sort_key):
-      binding = format_binding(name, config['value'])
+  sorted_items = sorted(configuration_object.items(), key=sort_key)
+  for (scope, selector), config in sorted_items:
+    configurable_ = _REGISTRY[selector]
+    if configurable_.wrapped in (macro, _retrieve_constant):  # pylint: disable=comparison-with-callable
+      continue
+
+    minimal_selector = _minimal_selector(configurable_)
+    scoped_selector = (scope + '/' if scope else '') + minimal_selector
+    parameters = [
+        (k, v) for k, v in config.items() if _is_literally_representable(v)
+    ]
+    formatted_statements.append('# Parameters for {}:'.format(scoped_selector))
+    formatted_statements.append('# ' + '=' * (max_line_length - 2))
+    for arg, val in sorted(parameters):
+      binding = format_binding('{}.{}'.format(scoped_selector, arg), val)
       formatted_statements.append(binding)
-    if macros:
-      formatted_statements.append('')
-
-    sorted_items = sorted(configuration_object.items(), key=sort_key)
-    for (scope, selector), config in sorted_items:
-      configurable_ = _REGISTRY[selector]
-      if configurable_.wrapped in (macro, _retrieve_constant):  # pylint: disable=comparison-with-callable
-        continue
-
-      minimal_selector = import_manager.minimal_selector(configurable_)
-      scoped_selector = (scope + '/' if scope else '') + minimal_selector
-      parameters = [
-          (k, v) for k, v in config.items() if _is_literally_representable(v)
-      ]
-      formatted_statements.append(
-          '# Parameters for {}:'.format(scoped_selector))
-      formatted_statements.append('# ' + '=' * (max_line_length - 2))
-      for arg, val in sorted(parameters):
-        binding = format_binding('{}.{}'.format(scoped_selector, arg), val)
-        formatted_statements.append(binding)
-      if not parameters:
-        formatted_statements.append('# None.')
-      formatted_statements.append('')
+    if not parameters:
+      formatted_statements.append('# None.')
+    formatted_statements.append('')
 
   return '\n'.join(formatted_statements)
 
