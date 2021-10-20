@@ -1,0 +1,9 @@
+from __gin__ import dynamic_registration
+
+from gin.testdata import dynamic_registration_config_str_test as alias
+
+alias.function.arg = 'arg'
+alias.Class.method.arg = 'method_arg'
+alias.Class:
+  a = 1
+  b = 2
