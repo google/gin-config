@@ -1009,7 +1009,8 @@ def clear_config(clear_constants=False):
     for name, value in saved_constants.items():
       constant(name, value)
   _IMPORTS.clear()
-  _OPERATIVE_CONFIG.clear()
+  with _OPERATIVE_CONFIG_LOCK:
+    _OPERATIVE_CONFIG.clear()
 
 
 def bind_parameter(binding_key, value):
