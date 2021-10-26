@@ -208,6 +208,50 @@ var_arg_fn.non_kwarg2 = \\
               'line']}
 """
 
+_TEST_DYNAMIC_REGISTRATION_CONFIG_STR = """
+from __gin__ import dynamic_registration
+
+include '{}/gin/testdata/dynamic_registration_config_str_test.gin'
+
+import gin.testdata.import_test_configurables as alias
+
+alias.identity.param = 'param'
+
+alias.my_other_func:
+  a = 1
+  b = 2
+  c = @scope/alias.identity
+"""
+
+_EXPECTED_DYNAMIC_REGISTRATION_CONFIG_STR = """
+from __gin__ import dynamic_registration
+from gin.testdata import dynamic_registration_config_str_test as alias
+import gin.testdata.import_test_configurables as alias2
+
+# Parameters for alias.Class:
+# ==============================================================================
+alias.Class.a = 1
+alias.Class.b = 2
+
+# Parameters for alias.Class.method:
+# ==============================================================================
+alias.Class.method.arg = 'method_arg'
+
+# Parameters for alias.function:
+# ==============================================================================
+alias.function.arg = 'arg'
+
+# Parameters for alias2.identity:
+# ==============================================================================
+alias2.identity.param = 'param'
+
+# Parameters for alias2.my_other_func:
+# ==============================================================================
+alias2.my_other_func.a = 1
+alias2.my_other_func.b = 2
+alias2.my_other_func.c = @scope/alias2.identity
+"""
+
 
 def call_operative_config_str_configurables():
   fn1('mustelid')
@@ -1445,6 +1489,26 @@ class ConfigTest(absltest.TestCase):
     expected_config_lines = _EXPECTED_CONFIG_STR.splitlines()
     self.assertEqual(config_lines, expected_config_lines[1:])
 
+  def testConfigStrDynamicRegistration(self):
+    config_str = _TEST_DYNAMIC_REGISTRATION_CONFIG_STR.format(
+        absltest.get_default_test_srcdir())
+    config.parse_config(config_str)
+    config.finalize()
+
+    config_lines = config.config_str().splitlines()
+    # See the definition of _EXPECTED_DYNAMIC_REGISTRATION_CONFIG_STR above.
+    expected_lines = _EXPECTED_DYNAMIC_REGISTRATION_CONFIG_STR.splitlines()
+    self.assertEqual(config_lines, expected_lines[1:])
+
+  def testConfigStrDynamicRegistrationIsIdempotent(self):
+    input_config_str = _TEST_DYNAMIC_REGISTRATION_CONFIG_STR.format(
+        absltest.get_default_test_srcdir())
+    config.parse_config(input_config_str)
+    config_str = config.config_str()
+    config.clear_config()
+    config.parse_config(config_str)
+    self.assertEqual(config.config_str(), config_str)
+
   def testOperativeConfigStrHandlesOverrides(self):
     config_str = """
       ConfigurableClass.kwarg1 = 'base_kwarg1'
@@ -1491,7 +1555,7 @@ class ConfigTest(absltest.TestCase):
 
   def testParsingImportsIsIdempotentUpToSorting(self):
     config_str = """
-      from __gin__ import dynamic_registration  # Ignored in config_str...
+      from __gin__ import dynamic_registration
       import gin.testdata.import_test_configurables as test_configurables
       import __main__ as main
       from gin import testdata
@@ -1499,6 +1563,7 @@ class ConfigTest(absltest.TestCase):
     """
     config.parse_config(config_str)
     expected_config_str = '\n'.join([
+        'from __gin__ import dynamic_registration',
         'import __main__ as main',
         'from gin import testdata',
         'from gin.testdata import dynamic_registration as dr',
