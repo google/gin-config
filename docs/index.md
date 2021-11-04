@@ -73,6 +73,8 @@ In case of collisions, configurable names can be disambiguated by
 [specifying the module](#handling-naming-collisions-with-modules) of the
 intended configurable.
 
+Note: Gin-configurable functions are not pickleable.
+
 ### Using `gin.register`
 
 Gin additionally provides `gin.register`, which can be used either as a
@@ -121,8 +123,6 @@ Once `LanguageGenerator` has been registered, the `temperature` parameter of the
 within a Gin file via (for example)
 `generators.LanguageGenerator.sample.temperature = 1.0` (or simply
 `LanguageGenerator.sample.temperature = 1.0`).
-
-Note: Classes with registered methods are not pickleable.
 
 ## Binding parameters to values
 
