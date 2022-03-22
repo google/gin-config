@@ -20,6 +20,7 @@ import os
 from gin import config
 
 import tensorflow as tf
+from tensorflow import estimator as tf_estimator
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.core.framework import summary_pb2
@@ -36,7 +37,7 @@ def singleton_per_graph(constructor):
   return config.singleton_value(key, constructor)
 
 
-class GinConfigSaverHook(tf.estimator.SessionRunHook):
+class GinConfigSaverHook(tf_estimator.SessionRunHook):
   """A SessionRunHook that saves and summarizes the operative config.
 
   This hook will save Gin's operative configuration to a specified directory, as
