@@ -93,11 +93,15 @@ import pprint
 import threading
 import traceback
 import typing
-from typing import Any, Callable, Dict, Optional, Sequence, Set, Tuple, Type, Union
+from typing import Any, Callable, Dict, Optional, Sequence, Set, Tuple, Type, Union, Mapping, List
 
 from gin import config_parser
 from gin import selector_map
 from gin import utils
+
+
+def _format_location(location: config_parser.Location) -> str:
+  return f'{location.filename or "bindings string"}:{location.line_num}'
 
 
 class _ScopeManager(threading.local):
@@ -350,7 +354,12 @@ _RENAMED_SELECTORS = {}
 # Maps tuples of `(scope, selector)` to associated parameter values. This
 # specifies the current global "configuration" set through `bind_parameter` or
 # `parse_config`, but doesn't include any functions' default argument values.
-_CONFIG = {}
+_CONFIG: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+# Maps tuples of `(scope, selector)` to a mapping from parameter names to
+# locations at which the parameter values were set.
+_CONFIG_PROVENANCE: Dict[Tuple[str, str],
+                         Dict[str, Optional[config_parser.Location]]] = {}
 
 # Keeps a set of ImportStatements that were imported via config files.
 _IMPORTS = set()
@@ -999,6 +1008,7 @@ def clear_config(clear_constants=False):
   """
   _set_config_is_locked(False)
   _CONFIG.clear()
+  _CONFIG_PROVENANCE.clear()
   _SINGLETONS.clear()
   if clear_constants:
     _CONSTANTS.clear()
@@ -1013,7 +1023,9 @@ def clear_config(clear_constants=False):
     _OPERATIVE_CONFIG.clear()
 
 
-def bind_parameter(binding_key, value):
+def bind_parameter(binding_key,
+                   value,
+                   location: Optional[config_parser.Location] = None):
   """Binds the parameter value specified by `binding_key` to `value`.
 
   The `binding_key` argument should either be a string of the form
@@ -1038,6 +1050,7 @@ def bind_parameter(binding_key, value):
     binding_key: The parameter whose value should be set. This can either be a
       string, or a tuple of the form `(scope, selector, parameter)`.
     value: The desired value.
+    location: Location at which the parameter value was set.
 
   Raises:
     RuntimeError: If the config is locked.
@@ -1051,6 +1064,12 @@ def bind_parameter(binding_key, value):
   pbk = ParsedBindingKey.parse(binding_key)
   fn_dict = _CONFIG.setdefault(pbk.config_key, {})
   fn_dict[pbk.arg_name] = value
+
+  # We need to update the provenance even if no location information was
+  # provided, to avoid keeping stale information:
+  loc_dict: Dict[str, Optional[config_parser.Location]] = (
+      _CONFIG_PROVENANCE.setdefault(pbk.config_key, {}))
+  loc_dict[pbk.arg_name] = location
 
 
 def query_parameter(binding_key):
@@ -2074,9 +2093,12 @@ class ImportManager:
       return minimal_selector
 
 
-def _config_str(configuration_object,
-                max_line_length=80,
-                continuation_indent=4):
+def _config_str(
+    configuration_object: Mapping[Tuple[str, str], Mapping[str, Any]],
+    max_line_length: int = 80,
+    continuation_indent: int = 4,
+    show_provenance: bool = False,
+) -> str:
   """Print the configuration specified in configuration object.
 
   Args:
@@ -2086,12 +2108,15 @@ def _config_str(configuration_object,
       formatted string. Large nested structures will be split across lines, but
       e.g. long strings won't be split into a concatenation of shorter strings.
     continuation_indent: The indentation for continued lines.
+    show_provenance: Include provenance of configuration value (as comment).
 
   Returns:
     A config string capturing all parameter values set by the object.
   """
 
-  def format_binding(key, value):
+  def format_binding(key: str,
+                     value: str,
+                     provenance: Optional[config_parser.Location] = None):
     """Pretty print the given key/value pair."""
     formatted_val = pprint.pformat(
         value, width=(max_line_length - continuation_indent))
@@ -2103,6 +2128,9 @@ def _config_str(configuration_object,
       indented_formatted_val = '\n'.join(
           [' ' * continuation_indent + line for line in formatted_val_lines])
       output = '{} = \\\n{}'.format(key, indented_formatted_val)
+
+    if show_provenance and provenance:
+      output = f'# Set in {_format_location(provenance)}:' + '\n' + output
     return output
 
   def sort_key(key_tuple):
@@ -2143,13 +2171,17 @@ def _config_str(configuration_object,
       formatted_statements.append('# Macros:')
       formatted_statements.append('# ' + '=' * (max_line_length - 2))
     for (name, _), config in sorted(macros.items(), key=sort_key):
-      binding = format_binding(name, config['value'])
+      provenance: Optional[config_parser.Location] = _CONFIG_PROVENANCE.get(
+          (name, 'gin.macro'), {}).get('value', None)
+      binding = format_binding(name, config['value'], provenance)
       formatted_statements.append(binding)
     if macros:
       formatted_statements.append('')
 
-    sorted_items = sorted(configuration_object.items(), key=sort_key)
-    for (scope, selector), config in sorted_items:
+    sorted_items: List[Tuple[Tuple[str, str], Mapping[str, Any]]] = sorted(
+        configuration_object.items(), key=sort_key)
+    for key, config in sorted_items:
+      (scope, selector) = key
       configurable_ = _REGISTRY[selector]
       if configurable_.wrapped in (macro, _retrieve_constant):  # pylint: disable=comparison-with-callable
         continue
@@ -2163,7 +2195,10 @@ def _config_str(configuration_object,
           '# Parameters for {}:'.format(scoped_selector))
       formatted_statements.append('# ' + '=' * (max_line_length - 2))
       for arg, val in sorted(parameters):
-        binding = format_binding('{}.{}'.format(scoped_selector, arg), val)
+        provenance: Optional[config_parser.Location] = _CONFIG_PROVENANCE.get(
+            key, {}).get(arg, None)
+        binding = format_binding('{}.{}'.format(scoped_selector, arg), val,
+                                 provenance)
         formatted_statements.append(binding)
       if not parameters:
         formatted_statements.append('# None.')
@@ -2172,7 +2207,9 @@ def _config_str(configuration_object,
   return '\n'.join(formatted_statements)
 
 
-def operative_config_str(max_line_length=80, continuation_indent=4):
+def operative_config_str(max_line_length=80,
+                         continuation_indent=4,
+                         show_provenance: bool = False):
   """Retrieve the "operative" configuration as a config string.
 
   The operative configuration consists of all parameter values used by
@@ -2196,17 +2233,20 @@ def operative_config_str(max_line_length=80, continuation_indent=4):
       formatted string. Large nested structures will be split across lines, but
       e.g. long strings won't be split into a concatenation of shorter strings.
     continuation_indent: The indentation for continued lines.
+    show_provenance: Include provenance of configuration value (as comment).
 
   Returns:
     A config string capturing all parameter values set in the current program.
   """
   with _OPERATIVE_CONFIG_LOCK:
-    result = _config_str(
-        _OPERATIVE_CONFIG, max_line_length, continuation_indent)
+    result = _config_str(_OPERATIVE_CONFIG, max_line_length,
+                         continuation_indent, show_provenance)
   return result
 
 
-def config_str(max_line_length=80, continuation_indent=4):
+def config_str(max_line_length=80,
+               continuation_indent=4,
+               show_provenance: bool = False):
   """Retrieve the interpreted configuration as a config string.
 
   This is not the _operative configuration_, in that it may include parameter
@@ -2217,11 +2257,13 @@ def config_str(max_line_length=80, continuation_indent=4):
       formatted string. Large nested structures will be split across lines, but
       e.g. long strings won't be split into a concatenation of shorter strings.
     continuation_indent: The indentation for continued lines.
+    show_provenance: Include provenance of configuration value (as comment).
 
   Returns:
     A config string capturing all parameter values used by the current program.
   """
-  return _config_str(_CONFIG, max_line_length, continuation_indent)
+  return _config_str(_CONFIG, max_line_length, continuation_indent,
+                     show_provenance)
 
 
 class ParsedConfigFileIncludesAndImports(typing.NamedTuple):
@@ -2325,10 +2367,10 @@ def parse_config(bindings, skip_unknown=False):
         if not arg_name:
           macro_name = '{}/{}'.format(scope, selector) if scope else selector
           with utils.try_with_location(location):
-            bind_parameter((macro_name, 'gin.macro', 'value'), value)
+            bind_parameter((macro_name, 'gin.macro', 'value'), value, location)
         elif not _should_skip(selector, skip_unknown):
           with utils.try_with_location(location):
-            bind_parameter((scope, selector, arg_name), value)
+            bind_parameter((scope, selector, arg_name), value, location)
       elif isinstance(statement, config_parser.BlockDeclaration):
         if not _should_skip(statement.selector, skip_unknown):
           with utils.try_with_location(statement.location):

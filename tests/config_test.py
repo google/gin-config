@@ -208,6 +208,88 @@ var_arg_fn.non_kwarg2 = \\
               'line']}
 """
 
+_EXPECTED_CONFIG_STR_WITH_PROVENANCE = """
+from gin.testdata import import_test_configurables as alias
+
+# Macros:
+# ==============================================================================
+# Set in test_config.ioreader:43:
+pen_names = ['Pablo Neruda', 'Voltaire', 'Snoop Lion']
+# Set in test_config.ioreader:42:
+super/sweet = 'lugduname'
+
+# Parameters for configurable1:
+# ==============================================================================
+# Set in test_config.ioreader:6:
+configurable1.kwarg1 = \\
+    'a super duper extra double very wordy string that is just plain long'
+# Set in test_config.ioreader:8:
+configurable1.kwarg3 = @configurable2
+
+# Parameters for configurable2:
+# ==============================================================================
+# Set in test_config.ioreader:10:
+configurable2.non_kwarg = 'ferret == domesticated polecat'
+
+# Parameters for ConfigurableClass:
+# ==============================================================================
+# Set in test_config.ioreader:13:
+ConfigurableClass.kwarg1 = 'statler'
+# Set in test_config.ioreader:14:
+ConfigurableClass.kwarg2 = 'waldorf'
+
+# Parameters for test/scopes/ConfigurableClass:
+# ==============================================================================
+# Set in test_config.ioreader:21:
+test/scopes/ConfigurableClass.kwarg2 = 'beaker'
+
+# Parameters for ConfigurableSubclass:
+# ==============================================================================
+# Set in test_config.ioreader:17:
+ConfigurableSubclass.kwarg1 = 'waldorf'
+# Set in test_config.ioreader:18:
+ConfigurableSubclass.kwarg3 = 'ferret'
+
+# Parameters for woolly.sheep.dolly:
+# ==============================================================================
+# Set in test_config.ioreader:44:
+woolly.sheep.dolly.kwarg = 0
+
+# Parameters for pass_through:
+# ==============================================================================
+# Set in test_config.ioreader:40:
+pass_through.value = @RegisteredClassWithRegisteredMethods()
+
+# Parameters for RegisteredClassWithRegisteredMethods:
+# ==============================================================================
+# Set in test_config.ioreader:35:
+RegisteredClassWithRegisteredMethods.param_a = 'a'
+# Set in test_config.ioreader:36:
+RegisteredClassWithRegisteredMethods.param_b = 'b'
+
+# Parameters for RegisteredClassWithRegisteredMethods.registered_method1:
+# ==============================================================================
+# Set in test_config.ioreader:38:
+RegisteredClassWithRegisteredMethods.registered_method1.arg = 3.1415
+
+# Parameters for var_arg_fn:
+# ==============================================================================
+# Set in test_config.ioreader:30:
+var_arg_fn.any_name_is_ok = [%THE_ANSWER, %super/sweet, %pen_names]
+# Set in test_config.ioreader:32:
+var_arg_fn.dict_value = {'success': True}
+# Set in test_config.ioreader:31:
+var_arg_fn.float_value = 2.718
+# Set in test_config.ioreader:24:
+var_arg_fn.non_kwarg2 = \\
+    {'long': ['nested',
+              'structure',
+              ('that', 'will', 'span'),
+              'more',
+              ('than', 1),
+              'line']}
+"""
+
 _TEST_DYNAMIC_REGISTRATION_CONFIG_STR = """
 from __gin__ import dynamic_registration
 
@@ -1487,6 +1569,20 @@ class ConfigTest(absltest.TestCase):
     config_lines = config.config_str().splitlines()
     # See the definition of _EXPECTED_CONFIG_STR at top of file.
     expected_config_lines = _EXPECTED_CONFIG_STR.splitlines()
+    self.assertEqual(config_lines, expected_config_lines[1:])
+
+  def testConfigStrWithProvenance(self):
+    config_str = _TEST_CONFIG_STR
+    config.constant('THE_ANSWER', 42)
+    # We want a specific filename for the provenance here, so fake it:
+    string_io = io.StringIO(config_str)
+    setattr(string_io, 'name', 'test_config.ioreader')
+    config.parse_config(string_io)
+    config.finalize()
+
+    config_lines = config.config_str(show_provenance=True).splitlines()
+    # See the definition of _EXPECTED_CONFIG_STR_WITH_PROVENANCE.
+    expected_config_lines = _EXPECTED_CONFIG_STR_WITH_PROVENANCE.splitlines()
     self.assertEqual(config_lines, expected_config_lines[1:])
 
   def testConfigStrDynamicRegistration(self):
