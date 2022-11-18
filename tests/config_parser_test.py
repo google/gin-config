@@ -163,7 +163,7 @@ class ConfigParserTest(absltest.TestCase):
         'scope/some_fn.arg2 = Garbage  # <-- Not a valid Python value.')
     self.assertRegex(
         str(assert_raises.exception),
-        r'malformed .*node.* or string: <_?ast.Name [^\n]+>\n'
+        r'malformed .*node.* or string.*: <_?ast.Name [^\n]+>\n'
         r"    Failed to parse token 'Garbage' \(line 3\)")
 
   def testUnknownConfigurableAndMacro(self):
