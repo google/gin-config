@@ -309,7 +309,7 @@ class ParseContext:
       for reference in iterate_references(_CONFIG, to=original.wrapper):
         reference.initialize()
 
-    if inspect.isfunction(fn_or_cls) and inspect.isclass(path_attrs[-1]):
+    if inspect.isfunction(fn_or_cls) and inspect.isclass(path_attrs[-1]):  # pytype: disable=not-supported-yet
       self._register(attr_names[:-1], attr_values[:-1])
 
     return _INVERSE_REGISTRY[fn_or_cls]
@@ -1130,9 +1130,9 @@ def _might_have_parameter(fn_or_cls, arg_name):
   while hasattr(fn, '__wrapped__'):
     fn = fn.__wrapped__
   arg_spec = _get_cached_arg_spec(fn)
-  if arg_spec.varkw:
+  if arg_spec.varkw:  # pytype: disable=attribute-error
     return True
-  return arg_name in arg_spec.args or arg_name in arg_spec.kwonlyargs
+  return arg_name in arg_spec.args or arg_name in arg_spec.kwonlyargs  # pytype: disable=attribute-error
 
 
 def _validate_parameters(fn_or_cls, arg_name_list, err_prefix):
