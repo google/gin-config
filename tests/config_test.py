@@ -2442,7 +2442,7 @@ class ConfigTest(absltest.TestCase):
     result = config.parse_config_files_and_bindings(
         [gin_file], None, print_includes_and_imports=True)[0]
     self.assertEqual(result.filename, gin_file)
-    self.assertListEqual(result.imports,
+    self.assertListEqual(result.imports,  # pytype: disable=wrong-arg-types  # always-use-return-annotations
                          ['gin.testdata.import_test_configurables'])
     self.assertEqual(result.includes[0].filename, 'valid.gin')
     self.assertListEqual(result.includes[0].imports, [])
