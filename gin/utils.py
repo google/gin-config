@@ -38,7 +38,7 @@ def augment_exception_message_and_reraise(exception, message):
 
   proxy = ExceptionProxy()
   ExceptionProxy.__qualname__ = type(exception).__qualname__
-  raise proxy.with_traceback(exception.__traceback__) from None
+  raise proxy.with_traceback(exception.__traceback__)
 
 
 def _format_location(location):
