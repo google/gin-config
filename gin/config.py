@@ -2830,7 +2830,7 @@ def constants_from_enum(cls=None, module=None):
     if module is None:
       module = cls.__module__
     for value in cls:
-      constant('{}.{}'.format(module, str(value)), value)
+      constant('{}.{}.{}'.format(module, cls.__name__, value.name), value)
     return cls
 
   if cls is None:
