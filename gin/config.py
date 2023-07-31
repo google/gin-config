@@ -2797,7 +2797,7 @@ def constant(name, value):
   if not config_parser.MODULE_RE.match(name):
     raise ValueError("Invalid constant selector '{}'.".format(name))
 
-  if _CONSTANTS.matching_selectors(name):
+  if not _INTERACTIVE_MODE and _CONSTANTS.matching_selectors(name):
     err_str = "Constants matching selector '{}' already exist ({})."
     raise ValueError(err_str.format(name, _CONSTANTS.matching_selectors(name)))
 

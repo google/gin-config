@@ -2114,6 +2114,20 @@ class ConfigTest(absltest.TestCase):
     config.parse_config(config_str)
     self.assertEqual(ConfigurableClass().kwarg1, 'duplicate_fn3')
 
+    config.constant('CONST1', 42)
+    with self.assertRaisesRegex(ValueError, 'already exist'):
+      config.constant('CONST1', 42)
+
+    with config.interactive_mode():
+      config.constant('CONST1', 43)
+
+    config_str = """
+      configurable2.non_kwarg = %CONST1
+    """
+    config.parse_config(config_str)
+    non_kwarg, _ = configurable2()  # pylint:disable=no-value-for-parameter
+    self.assertIs(non_kwarg, 43)
+
   def testFinalizeLocksConfig(self):
     config.finalize()
     with self.assertRaises(RuntimeError):
