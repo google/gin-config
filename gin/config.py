@@ -99,6 +99,7 @@ from gin import config_parser
 from gin import selector_map
 from gin import utils
 
+logger = logging.getLogger(__name__)
 
 def _format_location(location: config_parser.Location) -> str:
   return f'{location.filename or "bindings string"}:{location.line_num}'
@@ -2047,7 +2048,7 @@ class ImportManager:
           location=config_parser.Location(None, 0, None, ''))
       self.add_import(import_statement)
     else:
-      logging.warning(
+      logger.warning(
           'Configurable %r was not imported using dynamic registration and has '
           'no __module__ attribute; dynamic registration will not be used in '
           'the resulting config string. This is likely because the initial set '
@@ -2411,7 +2412,7 @@ def _print_unknown_import_message(statement, exception):
     # avoid confusion.
     log_str += '\n%s'
     log_args.append(traceback.format_exc())
-  logging.info(log_str, *log_args)
+  logger.info(log_str, *log_args)
 
 
 def register_file_reader(*args):
@@ -2546,9 +2547,9 @@ def parse_config_files_and_bindings(
     for includes_and_imports in nested_includes_and_imports:
       log_includes_and_imports(includes_and_imports)
     if bindings:
-      logging.info('Additional Gin bindings:')
+      logger.info('Additional Gin bindings:')
       for binding in bindings:
-        logging.info('  %s', binding)
+        logger.info('  %s', binding)
   return nested_includes_and_imports
 
 
@@ -2557,11 +2558,11 @@ def log_includes_and_imports(
     first_line_prefix: str = '',
     prefix: str = ''):
   """Logs a ParsedConfigFileIncludesAndImports and its includes and imports."""
-  logging.info('%s%s', first_line_prefix, file_includes_and_imports.filename)
+  logger.info('%s%s', first_line_prefix, file_includes_and_imports.filename)
   infix = ' │' if file_includes_and_imports.includes else '  '
   if file_includes_and_imports.imports:
     for imported_module in file_includes_and_imports.imports:
-      logging.info('%s%s import %s', prefix, infix, imported_module)
+      logger.info('%s%s import %s', prefix, infix, imported_module)
   if file_includes_and_imports.includes:
     for i, nested_result in enumerate(file_includes_and_imports.includes):
       if i < len(file_includes_and_imports.includes) - 1:
