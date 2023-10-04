@@ -2397,21 +2397,29 @@ class ConfigTest(absltest.TestCase):
       A = 0
       B = 1
 
+    @config.constants_from_enum(module='enum_module')
+    class SomeFlagEnum(enum.Flag):
+      A = 1
+      B = 2
+      C = A | B
+
     @config.configurable
-    def f(a, b, c):
-      return a, b, c
+    def f(a, b, c, d):
+      return a, b, c, d
 
     config.parse_config("""
       f.a = %enum_module.SomeEnum.A
       f.b = %SomeEnum.B
       f.c = %SomeIntEnum.A
+      f.d = %SomeFlagEnum.C
     """)
     # pylint: disable=no-value-for-parameter
-    a, b, c = f()
+    a, b, c, d = f()
     # pylint: enable=no-value-for-parameter
     self.assertEqual(SomeEnum.A, a)
     self.assertEqual(SomeEnum.B, b)
     self.assertEqual(SomeIntEnum.A, c)
+    self.assertEqual(SomeFlagEnum.C, d)
 
   def testConstantsFromEnumWithModule(self):
 
