@@ -258,9 +258,15 @@ class ParseContext:
 
     return attr_names, attr_chain
 
-  def _import_source(self, import_statement, attr_names):
+  def _import_source(
+      self,
+      import_statement: Optional[config_parser.ImportStatement],
+      attr_names: List[str],
+  ) -> Optional[Tuple[config_parser.ImportStatement, str]]:
     """Creates an "import source" tuple for a given reference."""
-    if not import_statement.is_from and not import_statement.alias:
+    if import_statement is None:
+      return None
+    elif not import_statement.is_from and not import_statement.alias:
       module_parts = import_statement.module.split('.')
       num_matches = 0
       for module_part, attr_name in zip(module_parts, attr_names[:-1]):
@@ -1142,7 +1148,7 @@ def _validate_parameters(fn_or_cls, arg_name_list, err_prefix):
       raise ValueError(err_str.format(arg_name, err_prefix, fn_or_cls.__name__))
 
 
-def _get_cached_arg_spec(fn):
+def _get_cached_arg_spec(fn: Callable[..., Any]) -> inspect.FullArgSpec:
   """Gets cached argspec for `fn`."""
   arg_spec = _ARG_SPEC_CACHE.get(fn)
   if arg_spec is None:
