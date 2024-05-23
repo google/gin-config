@@ -99,6 +99,8 @@ config.external_configurable(
 config.external_configurable(
     tf.keras.optimizers.Adam, module='tf.keras.optimizers')
 config.external_configurable(
+    tf.keras.optimizers.AdamW, module='tf.keras.optimizers')
+config.external_configurable(
     tf.keras.optimizers.Adamax, module='tf.keras.optimizers')
 config.external_configurable(
     tf.keras.optimizers.Ftrl, module='tf.keras.optimizers')
