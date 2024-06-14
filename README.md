@@ -45,7 +45,7 @@ Install Gin from source:
 ```shell
 git clone https://github.com/google/gin-config
 cd gin-config
-python -m setup.py install
+python -m pip install .
 ```
 
 Import Gin (without TensorFlow functionality):
