@@ -1762,7 +1762,7 @@ def configurable(name_or_fn=None,
   The decorator can be supplied with parameters to specify the configurable name
   or supply an allowlist/denylist:
 
-      @config.configurable('explicit_configurable_name', allowlist='param2')
+      @config.configurable('explicit_configurable_name', allowlist=['param2'])
       def some_configurable_function(param1, param2='a default value'):
         ...
 
@@ -1891,7 +1891,7 @@ def register(name_or_fn=None,
   The decorator can be supplied with parameters to specify the name used to
   register or supply an allowlist/denylist:
 
-      @config.register('explicit_name', allowlist='param2')
+      @config.register('explicit_name', allowlist=['param2'])
       def some_configurable_function(param1, param2='a default value'):
         ...
 
