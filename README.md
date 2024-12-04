@@ -232,7 +232,9 @@ output.
 
 Any parameters set on the "root" (unscoped) function name are inherited by
 scoped variants (unless explicitly overridden), so in the above example both the
-generator and the discriminator use the `tf.nn.tanh` activation function.
+generator and the discriminator use the `tf.nn.tanh` activation function.  This
+works in general for a hierarchy of scopes, e.g., if we are in a scope named
+`a/b` the config will inherit all the values from scope `a`.
 
 ### 5. Full hierarchical configuration {#full-hierarchical}
 
