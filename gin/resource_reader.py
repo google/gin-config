@@ -63,7 +63,7 @@ def _parse_config_path(config_path: str) -> str:
 
   Path is split into head and filename using `os.path.split`. The head is
   treated as a Python package and the filename as a gin file. Path to where the
-  package is located on the fileystem is determined and then joined with the
+  package is located on the filesystem is determined and then joined with the
   filename.
 
   `importlib.resources` was not used because it is new in python 3.7.
