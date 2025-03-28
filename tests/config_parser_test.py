@@ -16,11 +16,11 @@
 import ast
 import pprint
 import random
+import tokenize
 import typing
 from typing import Any, Dict, Sequence, Tuple
 
 from absl.testing import absltest
-
 from gin import config_parser
 
 
@@ -112,7 +112,7 @@ class ConfigParserTest(absltest.TestCase):
     self.assertEqual(parsed_value, ast.literal_eval(literal))
 
   def _assert_raises_syntax_error(self, literal):
-    with self.assertRaises(SyntaxError):
+    with self.assertRaises((SyntaxError, tokenize.TokenError)):
       self._parse_value(literal)
 
   def _parse_config(self,
