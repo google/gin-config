@@ -1123,7 +1123,7 @@ def _might_have_parameter(fn_or_cls, arg_name):
 
   Args:
     fn_or_cls: The function or class to check.
-    arg_name: The name fo the parameter.
+    arg_name: The name of the parameter.
 
   Returns:
     Whether `arg_name` might be a valid argument of `fn`.
