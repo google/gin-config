@@ -45,8 +45,8 @@ def _ensure_tf_install():  # pylint: disable=g-statement-before-imports
 
   import distutils.version
 
-  if (distutils.version.LooseVersion(tf.__version__) <
-      distutils.version.LooseVersion(required_tensorflow_version)):
+  if (distutils.version.LooseVersion(tf.__version__) <  # pytype: disable=module-attr
+      distutils.version.LooseVersion(required_tensorflow_version)):  # pytype: disable=module-attr
     raise ImportError(
         "This version of Gin-Config requires TensorFlow "
         "version >= {required}; Detected an installation of version {present}. "
