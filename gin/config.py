@@ -573,6 +573,15 @@ def _decorate_fn_or_cls(decorator,
   """
   if not inspect.isclass(fn_or_cls):  # pytype: disable=wrong-arg-types
     return decorator(_ensure_wrappability(fn_or_cls))
+
+  try:
+    # We check if the class can be subclassed. Some built-in types
+    # can't be, and will raise a TypeError here. In this case,
+    # we fall back to treating `fn_or_cls` as a function.
+    type(fn_or_cls.__name__ + 'GinSubclass', (fn_or_cls,), {})
+  except TypeError:
+    return decorator(_ensure_wrappability(fn_or_cls))
+
   cls = fn_or_cls
   if avoid_class_mutation:
     # This approach enables @gin.register and gin.external_configurable(), and
