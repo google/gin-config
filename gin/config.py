@@ -436,7 +436,7 @@ def _ensure_wrappability(fn):
     wrappable_fn.__name__ = fn.__name__
     wrappable_fn.__doc__ = fn.__doc__
     wrappable_fn.__module__ = ''  # These types have no __module__, sigh.
-    wrappable_fn.__wrapped__ = fn
+    wrappable_fn.__wrapped__ = fn  # pyrefly: ignore[missing-attribute]
     return wrappable_fn
 
   # Otherwise we're good to go...
@@ -1512,7 +1512,7 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
   def gin_wrapper(*args, **kwargs):
     """Supplies fn with parameter values from the configuration."""
     current_selector = _RENAMED_SELECTORS.get(selector, selector)
-    new_kwargs = _get_bindings(current_selector)
+    new_kwargs = _get_bindings(current_selector)  # pyrefly: ignore[bad-argument-type]
     gin_bound_args = list(new_kwargs.keys())
     scope_str = '/'.join(current_scope())
 
@@ -1730,7 +1730,7 @@ def _make_configurable(fn_or_cls,
       wrapper=decorated_fn_or_cls,
       wrapped=fn_or_cls,
       name=name,
-      module=module,
+      module=module,  # pyrefly: ignore[bad-argument-type]
       import_source=import_source,
       allowlist=allowlist,
       denylist=denylist,
@@ -2400,7 +2400,7 @@ def parse_config(bindings, skip_unknown=False):
             _print_unknown_import_message(statement, e)
       elif isinstance(statement, config_parser.IncludeStatement):
         with utils.try_with_location(statement.location):
-          nested_includes = parse_config_file(statement.filename, skip_unknown)
+          nested_includes = parse_config_file(statement.filename, skip_unknown)  # pyrefly: ignore[bad-argument-type]
           includes.append(nested_includes)
       else:
         raise AssertionError(

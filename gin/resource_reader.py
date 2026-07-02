@@ -86,7 +86,7 @@ def _parse_config_path(config_path: str) -> str:
     raise ValueError('Package not found', pkg)
   file_sys_path = spec.origin
   # file_sys_path often ends with __init__.py.
-  path = os.path.join(os.path.dirname(file_sys_path), filename)
+  path = os.path.join(os.path.dirname(file_sys_path), filename)  # pyrefly: ignore[no-matching-overload]
   return path
 
 # Register TF file reader for Gin's parse_config_file.

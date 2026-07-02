@@ -228,14 +228,14 @@ class ConfigParser(object):
       return self._statements_queue.popleft()
 
     self._skip_whitespace_and_comments()
-    if self._current_token.type == tokenize.ENDMARKER:
+    if self._current_token.type == tokenize.ENDMARKER:  # pyrefly: ignore[missing-attribute]
       return None
 
     # Save off location, but ignore char_num for any statement-level errors.
     stmt_loc = self._current_location(ignore_char_num=True)
     binding_key_or_keyword = self._parse_selector()
     statement = None
-    if self._current_token.string == '=':
+    if self._current_token.string == '=':  # pyrefly: ignore[missing-attribute]
       self._advance_one_token()
       value = self.parse_value()
       scope, selector, arg_name = parse_binding_key(binding_key_or_keyword)
@@ -293,8 +293,8 @@ class ConfigParser(object):
   def advance_one_line(self):
     """Advances to next line."""
 
-    current_line = self._current_token.start[0]  # Line number.
-    while current_line == self._current_token.start[0]:
+    current_line = self._current_token.start[0]  # Line number.  # pyrefly: ignore[missing-attribute]
+    while current_line == self._current_token.start[0]:  # pyrefly: ignore[missing-attribute]
       self._current_token = next(self._token_generator)
 
   @contextlib.contextmanager
@@ -316,14 +316,14 @@ class ConfigParser(object):
     self._skip_whitespace_and_comments()
 
   def _current_location(self, ignore_char_num=False):
-    line_num, char_num = self._current_token.start
+    line_num, char_num = self._current_token.start  # pyrefly: ignore[missing-attribute]
     if ignore_char_num:
       char_num = None
     return Location(
         filename=self._filename,
         line_num=line_num,
         char_num=char_num,
-        line_content=self._current_token.line)
+        line_content=self._current_token.line)  # pyrefly: ignore[missing-attribute]
 
   def _raise_syntax_error(self, msg, location=None):
     if not location:
@@ -333,23 +333,23 @@ class ConfigParser(object):
   def _expect(self, expected, err_msg):
     """Check that the current token is `expected`, otherwise raise `err_msg`."""
     if isinstance(expected, str):
-      actual = self._current_token.string
+      actual = self._current_token.string  # pyrefly: ignore[missing-attribute]
     elif isinstance(expected, int):
-      actual = self._current_token.type
-    if actual != expected:
-      actual_type_name = tokenize.tok_name[self._current_token.type]
-      actual_value = self._current_token.string
+      actual = self._current_token.type  # pyrefly: ignore[missing-attribute]
+    if actual != expected:  # pyrefly: ignore[unbound-name]
+      actual_type_name = tokenize.tok_name[self._current_token.type]  # pyrefly: ignore[missing-attribute]
+      actual_value = self._current_token.string  # pyrefly: ignore[missing-attribute]
       received = f'  Got {actual_type_name} = {actual_value}.'
       self._raise_syntax_error(err_msg + received)
     self._advance_one_token()
 
   def _skip(self, skippable_token_types):
-    while self._current_token.type in skippable_token_types:
+    while self._current_token.type in skippable_token_types:  # pyrefly: ignore[missing-attribute]
       self._advance_one_token()
 
   def _parse_dict_item(self):
     key = self.parse_value()
-    if self._current_token.string != ':':
+    if self._current_token.string != ':':  # pyrefly: ignore[missing-attribute]
       self._raise_syntax_error("Expected ':'.")
     self._advance()
     value = self.parse_value()
@@ -373,22 +373,22 @@ class ConfigParser(object):
     Raises:
       SyntaxError: If the scope or selector is malformatted.
     """
-    if self._current_token.type != tokenize.NAME:
+    if self._current_token.type != tokenize.NAME:  # pyrefly: ignore[missing-attribute]
       self._raise_syntax_error('Unexpected token.')
 
-    begin_line_num = self._current_token.start[0]
-    begin_char_num = self._current_token.start[1]
-    end_char_num = self._current_token.end[1]
-    line = self._current_token.line
+    begin_line_num = self._current_token.start[0]  # pyrefly: ignore[missing-attribute]
+    begin_char_num = self._current_token.start[1]  # pyrefly: ignore[missing-attribute]
+    end_char_num = self._current_token.end[1]  # pyrefly: ignore[missing-attribute]
+    line = self._current_token.line  # pyrefly: ignore[missing-attribute]
 
     selector_parts = []
     # This accepts an alternating sequence of NAME and '/' or '.' tokens.
     step_parity = 0
     while (step_parity == 0 and self._current_token.type == tokenize.NAME or
-           step_parity == 1 and self._current_token.string in ('/', '.')):
-      selector_parts.append(self._current_token.string)
+           step_parity == 1 and self._current_token.string in ('/', '.')):  # pyrefly: ignore[missing-attribute]
+      selector_parts.append(self._current_token.string)  # pyrefly: ignore[missing-attribute]
       step_parity = not step_parity
-      end_char_num = self._current_token.end[1]
+      end_char_num = self._current_token.end[1]  # pyrefly: ignore[missing-attribute]
       self._advance_one_token()
     self._skip_whitespace_and_comments()
 
@@ -415,7 +415,7 @@ class ConfigParser(object):
     return scoped_selector
 
   def _parse_identifier(self):
-    identifier = self._current_token.string
+    identifier = self._current_token.string  # pyrefly: ignore[missing-attribute]
     if not IDENTIFIER_RE.match(identifier):
       self._raise_syntax_error('Invalid identifier name.')
     self._advance()
@@ -431,12 +431,12 @@ class ConfigParser(object):
       self._expect('import', "Expected 'import'.")
       submodule = self._parse_identifier()
       module = f'{module}.{submodule}'
-    if self._current_token.string == 'as':
+    if self._current_token.string == 'as':  # pyrefly: ignore[missing-attribute]
       self._advance_one_token()
       alias = self._parse_identifier()
 
     return ImportStatement(
-        module=module,
+        module=module,  # pyrefly: ignore[unbound-name]
         is_from=keyword == 'from',
         alias=alias,
         location=statement_location)
@@ -458,7 +458,7 @@ class ConfigParser(object):
 
     bindings = []
     with self._block_scope():
-      while self._current_token.type != tokenize.DEDENT:
+      while self._current_token.type != tokenize.DEDENT:  # pyrefly: ignore[missing-attribute]
         binding_location = self._current_location()
         arg_name = self._parse_identifier()
         self._expect('=', "Expected '='.")
@@ -482,7 +482,7 @@ class ConfigParser(object):
         '(': (')', tuple, self.parse_value),
         '[': (']', list, self.parse_value)
     }
-    if self._current_token.string in bracket_types:
+    if self._current_token.string in bracket_types:  # pyrefly: ignore[missing-attribute]
       open_bracket = self._current_token.string
       close_bracket, type_fn, parse_item = bracket_types[open_bracket]
       self._advance()
@@ -511,17 +511,17 @@ class ConfigParser(object):
     """Try to parse a basic type (str, bool, number)."""
     token_value = ''
     # Allow a leading dash to handle negative numbers.
-    if self._current_token.string == '-':
+    if self._current_token.string == '-':  # pyrefly: ignore[missing-attribute]
       token_value += self._current_token.string
       self._advance()
 
     basic_type_tokens = [tokenize.NAME, tokenize.NUMBER, tokenize.STRING]
-    continue_parsing = self._current_token.type in basic_type_tokens
+    continue_parsing = self._current_token.type in basic_type_tokens  # pyrefly: ignore[missing-attribute]
     if not continue_parsing:
       return False, None
 
     while continue_parsing:
-      token_value += self._current_token.string
+      token_value += self._current_token.string  # pyrefly: ignore[unsupported-operation]
 
       try:
         value = ast.literal_eval(token_value)
@@ -529,16 +529,16 @@ class ConfigParser(object):
         err_str = "{}\n    Failed to parse token '{}'"
         self._raise_syntax_error(err_str.format(e, token_value))
 
-      was_string = self._current_token.type == tokenize.STRING
+      was_string = self._current_token.type == tokenize.STRING  # pyrefly: ignore[missing-attribute]
       self._advance()
-      is_string = self._current_token.type == tokenize.STRING
+      is_string = self._current_token.type == tokenize.STRING  # pyrefly: ignore[missing-attribute]
       continue_parsing = was_string and is_string
 
-    return True, value
+    return True, value  # pyrefly: ignore[unbound-name]
 
   def _maybe_parse_configurable_reference(self):
     """Try to parse a configurable reference (@[scope/name/]fn_name[()])."""
-    if self._current_token.string != '@':
+    if self._current_token.string != '@':  # pyrefly: ignore[missing-attribute]
       return False, None
 
     location = self._current_location()
@@ -561,7 +561,7 @@ class ConfigParser(object):
 
   def _maybe_parse_macro(self):
     """Try to parse an macro (%scope/name)."""
-    if self._current_token.string != '%':
+    if self._current_token.string != '%':  # pyrefly: ignore[missing-attribute]
       return False, None
 
     location = self._current_location()

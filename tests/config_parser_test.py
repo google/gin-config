@@ -159,7 +159,7 @@ class ConfigParserTest(absltest.TestCase):
     self.assertEqual(assert_raises.exception.lineno, 3)
     self.assertEqual(assert_raises.exception.offset, 29)
     self.assertEqual(
-        assert_raises.exception.text.strip(),
+        assert_raises.exception.text.strip(),  # pyrefly: ignore[missing-attribute]
         'scope/some_fn.arg2 = Garbage  # <-- Not a valid Python value.')
     self.assertRegex(
         str(assert_raises.exception),

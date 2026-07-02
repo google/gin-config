@@ -477,7 +477,7 @@ class ConfigurableClassWithNew(object):
 class MetaWithPostNewHook(type):
 
   def __call__(cls, *args, post_new_hook=None, **kwargs):
-    instance = cls.__new__(cls, *args, **kwargs)
+    instance = cls.__new__(cls, *args, **kwargs)  # pyrefly: ignore[no-matching-overload]
     if post_new_hook is not None:  # This will allow to inspect post-new state.
       post_new_hook(instance)
     instance.__init__(*args, **kwargs)
@@ -1177,7 +1177,7 @@ class ConfigTest(absltest.TestCase):
       raise ValidateHookError('Expected exception.')
 
     with self.assertRaises(ValidateHookError):
-      ConfigurableClassWithMetaAndNew(post_new_hook=fail)  # pylint: disable=unexpected-keyword-arg
+      ConfigurableClassWithMetaAndNew(post_new_hook=fail)  # pylint: disable=unexpected-keyword-arg  # pyrefly: ignore[unexpected-keyword]
 
   def testConfigurableClassWithMetaAndNewSeparatesNewAndInit(self):
     config_str = """
@@ -1191,7 +1191,7 @@ class ConfigTest(absltest.TestCase):
       self.assertFalse(hasattr(instance, 'kwarg2'))
 
     instance = ConfigurableClassWithMetaAndNew(  # pylint: disable=unexpected-keyword-arg
-        post_new_hook=calls_new_with_no_injection_when_init_present)
+        post_new_hook=calls_new_with_no_injection_when_init_present)  # pyrefly: ignore[unexpected-keyword]
     self.assertEqual(instance.kwarg1, 'statler')
     self.assertEqual(instance.kwarg2, 'waldorf')
 
@@ -1221,7 +1221,7 @@ class ConfigTest(absltest.TestCase):
       raise ValidateHookError('Expected exception.')
 
     with self.assertRaises(ValidateHookError):
-      ConfigurableClassWithMeta(post_new_hook=fail)  # pylint: disable=unexpected-keyword-arg
+      ConfigurableClassWithMeta(post_new_hook=fail)  # pylint: disable=unexpected-keyword-arg  # pyrefly: ignore[unexpected-keyword]
 
   def testConfigurableClassWithMetaSeparatesNewAndInit(self):
     config_str = """
@@ -1234,7 +1234,7 @@ class ConfigTest(absltest.TestCase):
       self.assertFalse(hasattr(instance, 'kwarg1'))
       self.assertFalse(hasattr(instance, 'kwarg2'))
 
-    instance = ConfigurableClassWithMeta(post_new_hook=no_attrs)  # pylint: disable=unexpected-keyword-arg
+    instance = ConfigurableClassWithMeta(post_new_hook=no_attrs)  # pylint: disable=unexpected-keyword-arg  # pyrefly: ignore[unexpected-keyword]
     self.assertEqual(instance.kwarg1, 'statler')
     self.assertEqual(instance.kwarg2, 'waldorf')
 
@@ -1361,11 +1361,11 @@ class ConfigTest(absltest.TestCase):
     config.parse_config(config_str)
     configurable_class = ConfigurableClass()
     cls = configurable_class.kwarg1
-    self.assertTrue(issubclass(cls, ExternalClass))
+    self.assertTrue(issubclass(cls, ExternalClass))  # pyrefly: ignore[bad-argument-type]
     self.assertEqual(cls.__module__, ExternalClass.__module__)
     self.assertEqual(cls.__name__, ExternalClass.__name__)
     self.assertEqual(cls.__doc__, ExternalClass.__doc__)
-    self.assertTrue(issubclass(configurable_class.kwarg2, ExternalClass))
+    self.assertTrue(issubclass(configurable_class.kwarg2, ExternalClass))  # pyrefly: ignore[bad-argument-type]
 
     instance = cls()
     self.assertIsInstance(instance, ExternalClass)
@@ -1379,7 +1379,7 @@ class ConfigTest(absltest.TestCase):
     """
     config.parse_config(config_str)
     configurable_class = ConfigurableClass()
-    instance = configurable_class.kwarg1()
+    instance = configurable_class.kwarg1()  # pyrefly: ignore[not-callable]
     self.assertEqual(instance.__dict__,
                      pickle.loads(pickle.dumps(instance)).__dict__)
 
@@ -1496,7 +1496,7 @@ class ConfigTest(absltest.TestCase):
     """
     config.parse_config(config_str)
 
-    configurable_named_tuple = ConfigurableNamedTuple()
+    configurable_named_tuple = ConfigurableNamedTuple()  # pyrefly: ignore[missing-argument]
     self.assertEqual(configurable_named_tuple.field1, 'field1')
     self.assertEqual(configurable_named_tuple.field2, 'field2')
 
@@ -1514,7 +1514,7 @@ class ConfigTest(absltest.TestCase):
 
     # expected = '__new__() takes exactly 3 arguments (1 given)'
     with self.assertRaises(TypeError):
-      RegisteredExternalNamedTuple()
+      RegisteredExternalNamedTuple()  # pyrefly: ignore[missing-argument]
 
     with self.assertRaises(TypeError):
       create_named_tuple(RegisteredExternalNamedTuple)
@@ -1989,7 +1989,7 @@ class ConfigTest(absltest.TestCase):
     config.parse_config(config_str)
 
     value = ConfigurableClass()
-    self.assertEqual(value.kwarg1(), ('#1_non_kwarg', '#1_kwarg1'))
+    self.assertEqual(value.kwarg1(), ('#1_non_kwarg', '#1_kwarg1'))  # pyrefly: ignore[not-callable]
     self.assertEqual(value.kwarg2, ('no_scope_non_kwarg', '#2_kwarg1'))
 
   def testExplicitVsImplicitScopes(self):
@@ -2008,12 +2008,12 @@ class ConfigTest(absltest.TestCase):
     config.parse_config(config_str)
 
     value = ConfigurableClass()
-    self.assertEqual(value.kwarg1(), ('no_scope_non_kwarg', 'implicit_scope'))
+    self.assertEqual(value.kwarg1(), ('no_scope_non_kwarg', 'implicit_scope'))  # pyrefly: ignore[not-callable]
     self.assertEqual(value.kwarg2, ('no_scope_non_kwarg', 'no_scope_kwarg1'))
 
     with config.config_scope('explicit_scope'):
       value = ConfigurableClass()
-    self.assertEqual(value.kwarg1(), ('no_scope_non_kwarg', 'implicit_scope'))
+    self.assertEqual(value.kwarg1(), ('no_scope_non_kwarg', 'implicit_scope'))  # pyrefly: ignore[not-callable]
     self.assertEqual(value.kwarg2, ('explicit_non_kwarg', 'explicit_scope'))
 
   def testScopingThreadSafety(self):

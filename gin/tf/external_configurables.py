@@ -38,7 +38,7 @@ config.external_configurable(
 @functools.wraps(tf.compat.v1.train.piecewise_constant)
 def piecewise_constant(global_step, *args, **kwargs):
   if 'boundaries' in kwargs:
-    kwargs['boundaries'] = list(np.int64(kwargs['boundaries']))
+    kwargs['boundaries'] = list(np.int64(kwargs['boundaries']))  # pyrefly: ignore[bad-argument-type]
   return tf.compat.v1.train.piecewise_constant(global_step, *args, **kwargs)
 
 
