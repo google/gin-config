@@ -2385,6 +2385,25 @@ class ConfigTest(absltest.TestCase):
     self.assertEqual(0, config.query_parameter('OLD.ANSWER'))
     self.assertEqual(10, config.query_parameter('NEW.ANSWER'))
 
+
+  def testRegisterEnum(self):
+
+    @config.register_enum(module='enum_module')
+    class SomeEnum(enum.Enum):
+      FOO = 'foo'
+      BAR = 'bar'
+
+    @config.configurable
+    def baz(a):
+      return a
+
+    config.parse_config("baz.a = %enum_module.SomeEnum")
+    # pylint: disable=no-value-for-parameter
+    a = baz()
+    # pylint: enable=no-value-for-parameter
+    self.assertEqual(a, SomeEnum)
+
+
   def testConstantsFromEnum(self):
 
     @config.constants_from_enum(module='enum_module')
