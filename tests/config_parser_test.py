@@ -367,6 +367,7 @@ class ConfigParserTest(absltest.TestCase):
     self.assertEqual(imports[i].format(), 'import some.module.name')
     self.assertEqual(imports[i].bound_name(), 'some')
     self.assertEqual(imports[i].partial_path(), 'some')
+    self.assertEqual(imports[i].module_path(), 'some')
 
     i += 1
     self.assertEqual(imports[i].module, 'another.module.name')
@@ -375,6 +376,7 @@ class ConfigParserTest(absltest.TestCase):
     self.assertEqual(imports[i].format(), 'import another.module.name')
     self.assertEqual(imports[i].bound_name(), 'another')
     self.assertEqual(imports[i].partial_path(), 'another')
+    self.assertEqual(imports[i].module_path(), 'another')
 
     i += 1
     self.assertEqual(imports[i].module, 'some.module.name')
@@ -383,6 +385,7 @@ class ConfigParserTest(absltest.TestCase):
     self.assertEqual(imports[i].format(), 'import some.module.name as alias')
     self.assertEqual(imports[i].bound_name(), 'alias')
     self.assertEqual(imports[i].partial_path(), 'some.module.alias')
+    self.assertEqual(imports[i].module_path(), 'some.module.name')
 
     i += 1
     self.assertEqual(imports[i].module, 'another.module.name')
@@ -391,6 +394,7 @@ class ConfigParserTest(absltest.TestCase):
     self.assertEqual(imports[i].format(), 'from another.module import name')
     self.assertEqual(imports[i].bound_name(), 'name')
     self.assertEqual(imports[i].partial_path(), 'another.module.name')
+    self.assertEqual(imports[i].module_path(), 'another.module.name')
 
     i += 1
     self.assertEqual(imports[i].module, 'some.module.name')
@@ -400,6 +404,7 @@ class ConfigParserTest(absltest.TestCase):
                      'from some.module import name as alias')
     self.assertEqual(imports[i].bound_name(), 'alias')
     self.assertEqual(imports[i].partial_path(), 'some.module.alias')
+    self.assertEqual(imports[i].module_path(), 'some.module.name')
 
     with self.assertRaises(SyntaxError):
       self._parse_config('import a.0b')

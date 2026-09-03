@@ -116,6 +116,17 @@ class ImportStatement(typing.NamedTuple):
     else:  # not self.is_from and not self.alias
       return self.module.split('.')[0]
 
+  def module_path(self):
+    """Returns the module path that the bound name refers to.
+
+    A plain `import a.b.c` binds only the top-level name `a`, so the bound name
+    refers to `a`. Aliased and `from` imports bind a name that refers to the
+    full module (e.g. `a.b.c`), since the name is bound to that module.
+    """
+    if self.is_from or self.alias:
+      return self.module
+    return self.module.split('.')[0]
+
 
 class IncludeStatement(typing.NamedTuple):
   filename: str
