@@ -411,7 +411,7 @@ _ARG_SPEC_CACHE = {}
 _LOCATION_PREFIXES = ['']
 
 # Value to represent required parameters.
-REQUIRED = object()
+REQUIRED: Any = object()
 # Add it to constants.
 _CONSTANTS['gin.REQUIRED'] = REQUIRED
 
