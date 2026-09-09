@@ -1334,11 +1334,11 @@ class ConfigTest(absltest.TestCase):
     self.assertIsInstance(sub_instance, ConfigurableClass)
     self.assertIsInstance(sub_instance, type(super_instance))
 
-    self.assertEqual(super_instance.kwarg1, 'one')
-    self.assertIsNone(super_instance.kwarg2)
+    self.assertEqual(super_instance.kwarg1, 'one')  # pyrefly: ignore[missing-attribute]
+    self.assertIsNone(super_instance.kwarg2)  # pyrefly: ignore[missing-attribute]
     self.assertEqual(sub_instance.kwarg1, 'some')
     self.assertIsNone(sub_instance.kwarg2)
-    self.assertEqual(sub_instance.kwarg3, 'thing')
+    self.assertEqual(sub_instance.kwarg3, 'thing')  # pyrefly: ignore[missing-attribute]
     self.assertEqual(sub_instance.__dict__,
                      pickle.loads(pickle.dumps(sub_instance)).__dict__)
 
