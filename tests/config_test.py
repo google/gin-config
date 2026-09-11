@@ -2403,23 +2403,55 @@ class ConfigTest(absltest.TestCase):
       B = 2
       C = A | B
 
+    @config.constants_from_enum(module='enum_module')
+    class SomeStrEnum(str, enum.Enum):
+      A = 'a'
+      B = 'b'
+
     @config.configurable
-    def f(a, b, c, d):
-      return a, b, c, d
+    def f(a, b, c, d, e, g):
+      return a, b, c, d, e, g
 
     config.parse_config("""
       f.a = %enum_module.SomeEnum.A
       f.b = %SomeEnum.B
       f.c = %SomeIntEnum.A
       f.d = %SomeFlagEnum.C
+      f.e = %enum_module.SomeStrEnum.A
+      f.g = %SomeStrEnum.B
     """)
     # pylint: disable=no-value-for-parameter
-    a, b, c, d = f()
+    a, b, c, d, e, g = f()
     # pylint: enable=no-value-for-parameter
     self.assertEqual(SomeEnum.A, a)
     self.assertEqual(SomeEnum.B, b)
     self.assertEqual(SomeIntEnum.A, c)
     self.assertEqual(SomeFlagEnum.C, d)
+    self.assertEqual(SomeStrEnum.A, e)
+    self.assertEqual(SomeStrEnum.B, g)
+
+  def testConstantsFromStrEnum(self):
+    if not hasattr(enum, 'StrEnum'):
+      return
+
+    @config.constants_from_enum(module='enum_module')
+    class SomeStrEnum(enum.StrEnum):
+      A = 'a'
+      B = 'b'
+
+    @config.configurable
+    def fn_strenum(a, b):
+      return a, b
+
+    config.parse_config("""
+      fn_strenum.a = %enum_module.SomeStrEnum.A
+      fn_strenum.b = %SomeStrEnum.B
+    """)
+    # pylint: disable=no-value-for-parameter
+    a, b = fn_strenum()
+    # pylint: enable=no-value-for-parameter
+    self.assertEqual(SomeStrEnum.A, a)
+    self.assertEqual(SomeStrEnum.B, b)
 
   def testConstantsFromEnumWithModule(self):
 
