@@ -22,7 +22,9 @@ import io
 import logging
 import os
 import pickle
+import sys
 import threading
+import types
 
 from absl.testing import absltest
 
@@ -829,6 +831,39 @@ class ConfigTest(absltest.TestCase):
     config.parse_config(config_str)
     bindings = config.get_bindings('gin.testdata.dynamic_registration.Class')
     self.assertEqual(bindings, {'a': 1, 'b': 2})
+
+  def testDynamicRegistrationAliasedImportUsesRealModuleName(self):
+    # Register a synthetic module that no other test imports, so registry state
+    # left behind by earlier tests can't mask a regression here.
+    module_name = 'gin.testdata.dynamic_registration_alias_test'
+    module = types.ModuleType(module_name)
+
+    class Class:
+      def __init__(self, a, b=None):
+        self.a = a
+        self.b = b
+
+    def function():
+      return 2
+
+    module.Class = Class
+    module.function = function
+    sys.modules[module_name] = module
+    try:
+      config_str = """
+        from __gin__ import dynamic_registration
+
+        import gin.testdata.dynamic_registration_alias_test as dr
+
+        dr.Class.a = 1
+        dr.Class.b = @dr.function()
+      """
+      config.parse_config(config_str)
+      bindings = config.get_bindings(
+          'gin.testdata.dynamic_registration_alias_test.Class')
+      self.assertEqual(bindings, {'a': 1, 'b': 2})
+    finally:
+      del sys.modules[module_name]
 
   def testDynamicRegistrationMacro(self):
     config_str = """

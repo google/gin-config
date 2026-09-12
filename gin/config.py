@@ -302,7 +302,9 @@ class ParseContext:
     if source is None:  # This happens for Gin "builtins" like `macro`.
       module = root_name
     else:
-      module = '.'.join([source.partial_path(), *inner_names])
+      # Aliased imports must still use the real module path; `partial_path()`
+      # substitutes the alias into the module name.
+      module = '.'.join([source.module_path(), *inner_names])
 
     original = _inverse_lookup(fn_or_cls)
     _make_configurable(
