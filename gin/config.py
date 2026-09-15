@@ -2852,6 +2852,44 @@ def constants_from_enum(cls=None, module=None):
   return decorator(cls)
 
 
+def register_enum(cls=None, module=None):
+  """Decorator for register an enum class.
+
+  This essentially bypasses the limitation of enums which forbid inheritance
+  whenever an attribute is defined and thus prevents decoration with the
+  main register function.
+
+  Generated constants have format `module.ClassName`. The module
+  name is optional when using the constant.
+
+  Args:
+    cls: Class type.
+    module: The module to associate with the constants, to help handle naming
+      collisions. If `None`, `cls.__module__` will be used.
+
+  Returns:
+    Class type (identity function).
+
+  Raises:
+    TypeError: When applied to a non-enum class.
+  """
+  def decorator(cls, module=module):
+    if not issubclass(cls, enum.Enum):
+      raise TypeError("Class '{}' is not subclass of enum.".format(
+          cls.__name__))
+
+    if module is None:
+      module = cls.__module__
+    for value in cls:
+      constant('{}.{}'.format(module, cls.__name__), value.__class__)
+      break
+    return cls
+
+  if cls is None:
+    return decorator
+  return decorator(cls)
+
+
 @register_finalize_hook
 def validate_macros_hook(config):
   for ref in iterate_references(config, to=get_configurable(macro)):
