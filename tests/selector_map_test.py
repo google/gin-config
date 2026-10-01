@@ -13,12 +13,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+
 from absl.testing import absltest
 
 from gin import selector_map
 
 
 class SelectorMapTest(absltest.TestCase):
+
+  def testCopyDoesNotShareSelectorTree(self):
+    for copy_fn in (lambda sm: sm.copy(), copy.copy):
+      with self.subTest(copy_fn=copy_fn):
+        original = selector_map.SelectorMap()
+        value = []
+        original['one.name'] = value
+        copied = copy_fn(original)
+        self.assertIs(copied.get_match('name'), value)
+
+        copied['two.name'] = 2
+        self.assertEqual(original.get_all_matches('name'), [value])
+        original['three.name'] = 3
+        self.assertCountEqual(copied.get_all_matches('name'), [value, 2])
+
+  def testCopyRemovalDoesNotChangeOriginalMatches(self):
+    original = selector_map.SelectorMap()
+    original['one.name'] = 1
+    original['two.name'] = 2
+    copied = original.copy()
+
+    self.assertEqual(copied.pop('one.name'), 1)
+    self.assertCountEqual(original.get_all_matches('name'), [1, 2])
+    self.assertEqual(copied.get_all_matches('name'), [2])
 
   def testBasicOperations(self):
     sm = selector_map.SelectorMap()

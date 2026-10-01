@@ -15,6 +15,7 @@
 
 """Provides a dict-like object that handles Gin "selectors"."""
 
+import copy
 import re
 
 # Key used to represent terminal nodes (nodes that correspond to a complete
@@ -55,7 +56,7 @@ class SelectorMap:
   def copy(self):
     # pylint: disable=protected-access
     sm = SelectorMap()
-    sm._selector_tree = self._selector_tree.copy()
+    sm._selector_tree = copy.deepcopy(self._selector_tree)
     sm._selector_map = self._selector_map.copy()
     return sm
 
