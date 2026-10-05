@@ -1369,8 +1369,8 @@ class ConfigTest(absltest.TestCase):
 
     instance = cls()
     self.assertIsInstance(instance, ExternalClass)
-    self.assertEqual(instance.kwarg1, 'statler')  # pytype: disable=attribute-error  # kwargs-checking
-    self.assertEqual(instance.kwarg2, 'waldorf')  # pytype: disable=attribute-error  # kwargs-checking
+    self.assertEqual(instance.kwarg1, 'statler')
+    self.assertEqual(instance.kwarg2, 'waldorf')
 
     config_str = """
       ConfigurableClass.kwarg1 = @ExternalConfigurable
@@ -1442,12 +1442,12 @@ class ConfigTest(absltest.TestCase):
     self.assertIsInstance(sub_instance, ConfigurableExternalSubclass)
     self.assertIsInstance(sub_instance, ExternalClass)
 
-    self.assertEqual(super_instance.kwarg1, 'one')  # pytype: disable=attribute-error  # kwargs-checking
-    self.assertIsNone(super_instance.kwarg2)  # pytype: disable=attribute-error  # kwargs-checking
+    self.assertEqual(super_instance.kwarg1, 'one')
+    self.assertIsNone(super_instance.kwarg2)
 
-    self.assertIsNone(sub_instance.kwarg1)  # pytype: disable=attribute-error  # kwargs-checking
-    self.assertEqual(sub_instance.kwarg2, 'two')  # pytype: disable=attribute-error  # kwargs-checking
-    self.assertEqual(sub_instance.kwarg3, 'three')  # pytype: disable=attribute-error  # kwargs-checking
+    self.assertIsNone(sub_instance.kwarg1)
+    self.assertEqual(sub_instance.kwarg2, 'two')
+    self.assertEqual(sub_instance.kwarg3, 'three')  # pyrefly: ignore[missing-attribute]
 
   def testAbstractConfigurableSubclass(self):
     config_str = """
@@ -1529,9 +1529,7 @@ class ConfigTest(absltest.TestCase):
 
     @config.configurable('broken_function')
     def borked_fn(arg):  # pylint: disable=unused-variable
-      # pytype: disable=wrong-keyword-args
-      some_fn(nonexistent_arg=arg)  # pylint: disable=unexpected-keyword-arg
-      # pytype: enable=wrong-keyword-args
+      some_fn(nonexistent_arg=arg)  # pylint: disable=unexpected-keyword-arg  # pyrefly: ignore[unexpected-keyword]
 
     config.parse_config([
         'configurable2.non_kwarg = @broken_function()',
@@ -2471,7 +2469,7 @@ class ConfigTest(absltest.TestCase):
     result = config.parse_config_files_and_bindings(
         [gin_file], None, print_includes_and_imports=True)[0]
     self.assertEqual(result.filename, gin_file)
-    self.assertListEqual(result.imports,  # pytype: disable=wrong-arg-types  # always-use-return-annotations
+    self.assertListEqual(result.imports,
                          ['gin.testdata.import_test_configurables'])
     self.assertEqual(result.includes[0].filename, 'valid.gin')
     self.assertListEqual(result.includes[0].imports, [])

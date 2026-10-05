@@ -315,7 +315,7 @@ class ParseContext:
       for reference in iterate_references(_CONFIG, to=original.wrapper):
         reference.initialize()
 
-    if inspect.isfunction(fn_or_cls) and inspect.isclass(path_attrs[-1]):  # pytype: disable=not-supported-yet
+    if inspect.isfunction(fn_or_cls) and inspect.isclass(path_attrs[-1]):
       self._register(attr_names[:-1], attr_values[:-1])
 
     return _INVERSE_REGISTRY[fn_or_cls]
@@ -418,7 +418,7 @@ _CONSTANTS['gin.REQUIRED'] = REQUIRED
 
 def _find_class_construction_fn(cls):
   """Find the first __init__ or __new__ method in the given class's MRO."""
-  for base in inspect.getmro(cls):  # pytype: disable=wrong-arg-types
+  for base in inspect.getmro(cls):
     if '__init__' in base.__dict__:
       return base.__init__
     if '__new__' in base.__dict__:
@@ -464,7 +464,7 @@ def _find_registered_methods(cls, selector):
     # require that the function's __module__ is the same as that of the class,
     # its __name__ matches the name it is accessible under via the class, and
     # its __qualname__ contains the class name as `Class.name`.
-    for base in inspect.getmro(cls):  # pytype: disable=wrong-arg-types
+    for base in inspect.getmro(cls):
       if (inspect.isfunction(maybe_method) and
           maybe_method.__module__ == base.__module__ and
           getattr(base, maybe_method.__name__, None) == maybe_method):
@@ -571,7 +571,7 @@ def _decorate_fn_or_cls(decorator,
   Returns:
     The decorated function or class.
   """
-  if not inspect.isclass(fn_or_cls) or issubclass(fn_or_cls, enum.Enum):  # pytype: disable=wrong-arg-types
+  if not inspect.isclass(fn_or_cls) or issubclass(fn_or_cls, enum.Enum):
     return decorator(_ensure_wrappability(fn_or_cls))
 
   try:
@@ -1136,7 +1136,7 @@ def _might_have_parameter(fn_or_cls, arg_name):
   Returns:
     Whether `arg_name` might be a valid argument of `fn`.
   """
-  if inspect.isclass(fn_or_cls):  # pytype: disable=wrong-arg-types
+  if inspect.isclass(fn_or_cls):
     fn = _find_class_construction_fn(fn_or_cls)
   else:
     fn = fn_or_cls
@@ -1144,9 +1144,9 @@ def _might_have_parameter(fn_or_cls, arg_name):
   while hasattr(fn, '__wrapped__'):
     fn = fn.__wrapped__
   arg_spec = _get_cached_arg_spec(fn)
-  if arg_spec.varkw:  # pytype: disable=attribute-error
+  if arg_spec.varkw:
     return True
-  return arg_name in arg_spec.args or arg_name in arg_spec.kwonlyargs  # pytype: disable=attribute-error
+  return arg_name in arg_spec.args or arg_name in arg_spec.kwonlyargs
 
 
 def _validate_parameters(fn_or_cls, arg_name_list, err_prefix):
@@ -1512,7 +1512,7 @@ def _make_gin_wrapper(fn, fn_or_cls, name, selector, allowlist, denylist):
   def gin_wrapper(*args, **kwargs):
     """Supplies fn with parameter values from the configuration."""
     current_selector = _RENAMED_SELECTORS.get(selector, selector)
-    new_kwargs = _get_bindings(current_selector)  # pyrefly: ignore[bad-argument-type]
+    new_kwargs = _get_bindings(current_selector)
     gin_bound_args = list(new_kwargs.keys())
     scope_str = '/'.join(current_scope())
 
@@ -2707,7 +2707,7 @@ def _iterate_flattened_values(value):
     return
 
   if isinstance(value, collections.abc.Mapping):
-    value = collections.abc.ValuesView(value)  # pytype: disable=wrong-arg-count
+    value = collections.abc.ValuesView(value)
 
   if isinstance(value, collections.abc.Iterable):
     for nested_value in value:
