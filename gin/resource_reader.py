@@ -21,6 +21,8 @@ from typing import Any
 
 from gin import config
 
+logger = logging.getLogger(__name__)
+
 
 def system_path_reader(config_path: str) -> Any:
   """Loads a gin config as a resource from within a package.
@@ -34,7 +36,7 @@ def system_path_reader(config_path: str) -> Any:
   """
   path = _parse_config_path(config_path)
   f = open(path)
-  logging.info('gin-config opened resource file:%s', path)
+  logger.info('gin-config opened resource file:%s', path)
   return f
 
 
@@ -47,12 +49,12 @@ def system_path_file_exists(config_path: str) -> bool:
   Returns:
     True if the file exists.
   """
-  logging.info('system_path_file_exists:%s', config_path)
+  logger.info('system_path_file_exists:%s', config_path)
   try:
     path = _parse_config_path(config_path)
   except (ModuleNotFoundError, ValueError, ImportError):
     # Package was not found. Thus the file does not exist.
-    logging.error('Path not found: %s', config_path)
+    logger.error('Path not found: %s', config_path)
     return False
 
   return os.path.isfile(path)
