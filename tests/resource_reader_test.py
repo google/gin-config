@@ -48,6 +48,32 @@ class ResourceReaderTest(absltest.TestCase):
     self.assertEqual(result.includes[0].filename,
                      'fake_gin_package/parent.gin')
 
+  def testModuleLoggerName(self):
+    """Ensure resource_reader uses a namespaced logger under gin."""
+    self.assertEqual(resource_reader.logger.name, 'gin.resource_reader')
+
+  def testLoggingCanBeFilteredViaModuleLogger(self):
+    """Verify that logs emitted by resource_reader go through its logger."""
+    import logging
+    records = []
+
+    class TestHandler(logging.Handler):
+      def emit(self, record):
+        records.append(record)
+
+    handler = TestHandler()
+    logger = logging.getLogger('gin.resource_reader')
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    try:
+      resource_reader.system_path_file_exists('nonexistent_package_12345/foo.gin')
+      self.assertTrue(any('system_path_file_exists' in r.getMessage() for r in records))
+      self.assertTrue(any('Path not found' in r.getMessage() for r in records))
+      for r in records:
+        self.assertEqual(r.name, 'gin.resource_reader')
+    finally:
+      logger.removeHandler(handler)
+
 
 if __name__ == '__main__':
   absltest.main()
