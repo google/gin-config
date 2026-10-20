@@ -185,6 +185,23 @@ class ConfigParserTest(absltest.TestCase):
           ]),
           generate_unknown_reference_errors=True)
 
+  def testRejectNegatedReferences(self):
+    references = ('%amount', '%scope/amount', '@factory', '@factory()')
+    containers = ('{}', '[{}]', '({})', "{{'value': {}}}")
+    for reference in references:
+      for prefix in ('-', '- '):
+        for container in containers:
+          literal = container.format(prefix + reference)
+          with self.subTest(literal=literal):
+            with self.assertRaisesRegex(SyntaxError, 'Expected number'):
+              self._parse_value(literal)
+
+  def testNegativeNumericLiterals(self):
+    for literal in ('-0', '-42', '-0.5', '-1e-3', '-0xff', '-2j',
+                    '- 42', '(-\n # Comment before the number.\n 42)'):
+      with self.subTest(literal=literal):
+        self._validate_against_literal_eval(literal)
+
   def testSyntaxCornerCases(self):
     # Trailing commas are ok.
     self._validate_against_literal_eval('[1, 2, 3,]')

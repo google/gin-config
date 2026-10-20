@@ -518,6 +518,8 @@ class ConfigParser(object):
     basic_type_tokens = [tokenize.NAME, tokenize.NUMBER, tokenize.STRING]
     continue_parsing = self._current_token.type in basic_type_tokens  # pyrefly: ignore[missing-attribute]
     if not continue_parsing:
+      if token_value:
+        self._raise_syntax_error("Expected number after '-'.")
       return False, None
 
     while continue_parsing:
