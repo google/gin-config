@@ -33,6 +33,7 @@ be found in the [user guide].
 
 ### 1. Setup
 
+Gin supports Python 3 (tested on Python 3.9 – 3.12).
 
 Install Gin with pip:
 
