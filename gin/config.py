@@ -2707,7 +2707,8 @@ def _iterate_flattened_values(value):
     return
 
   if isinstance(value, collections.abc.Mapping):
-    value = collections.abc.ValuesView(value)
+    # References can appear in keys (including tuple keys) as well as values.
+    value = collections.abc.ItemsView(value)
 
   if isinstance(value, collections.abc.Iterable):
     for nested_value in value:
