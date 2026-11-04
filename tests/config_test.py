@@ -2074,6 +2074,49 @@ class ConfigTest(absltest.TestCase):
         config._CONFIG, to=config.get_configurable(config.macro))
     self.assertLen(list(macros_iterator), 3)
 
+  def testIterateReferencesInMappingKeys(self):
+    config.parse_config("""
+      configurable2.kwarg1 = {
+          (@key/macro(),): {'nested': @value/macro()},
+          @configurable2: 'ordinary value'
+      }
+    """)
+    references = list(config.iterate_references(config._CONFIG))
+    self.assertLen(references, 3)
+    self.assertCountEqual(
+        [ref.scoped_selector for ref in references],
+        ['key/macro', 'value/macro', 'configurable2'])
+    macros = config.iterate_references(
+        config._CONFIG, to=config.get_configurable(config.macro))
+    self.assertLen(list(macros), 2)
+
+  def testFinalizeMissingMacroInMappingKey(self):
+    for value in ('{%missing: 1}', "[{'nested': {(%missing,): 1}}]"):
+      with self.subTest(value=value):
+        config.clear_config()
+        config.parse_config('ConfigurableClass.kwarg1 = ' + value)
+        with self.assertRaisesRegex(ValueError, 'No bindings specified'):
+          config.finalize()
+
+  def testFinalizeUnknownReferenceInMappingKey(self):
+    for value in ('{@UnknownReference: 1}',
+                  "[{'nested': {(@UnknownReference(),): 1}}]"):
+      with self.subTest(value=value):
+        config.clear_config()
+        config.parse_config(
+            'ConfigurableClass.kwarg1 = ' + value, skip_unknown=True)
+        with self.assertRaisesRegex(
+            ValueError, "No configurable matching reference.*UnknownReference"):
+          config.finalize()
+
+  def testFinalizeValidMacroInMappingKey(self):
+    config.parse_config("""
+      key = 'resolved'
+      ConfigurableClass.kwarg1 = {%key: 'value'}
+    """)
+    config.finalize()
+    self.assertEqual(ConfigurableClass().kwarg1, {'resolved': 'value'})
+
   def testInteractiveMode(self):
     @config.configurable('duplicate_fn')
     def duplicate_fn1():  # pylint: disable=unused-variable
